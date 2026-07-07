@@ -29,7 +29,9 @@ test("mock providers save markdown, html, and history metadata", async () => {
   const markdown = await readFile(result.markdownPath, "utf8");
   assert.match(markdown, /type: "research-note"/);
   assert.match(markdown, /providers:\n  - "notebooklm"\n  - "tavily"/);
-  assert.match(markdown, /## notebooklm Results/);
+  assert.match(markdown, /## NotebookLM Deep Research/);
+  assert.doesNotMatch(markdown, /Research status/);
+  assert.doesNotMatch(markdown, /Provider metadata/);
   const html = await readFile(result.htmlPath, "utf8");
   assert.match(html, /<main>/);
   assert.match(html, /<h1 id="agentic-ai-vertical-market">Agentic AI vertical market<\/h1>/);
@@ -158,7 +160,7 @@ test("tavily provider uses Research API when an API key is configured", async ()
       html: true,
     });
     const markdown = await readFile(result.markdownPath, "utf8");
-    assert.match(markdown, /Mode: Tavily deep research/);
+    assert.match(markdown, /research_mode: "Tavily deep research"/);
     assert.match(markdown, /### Tavily Research Report/);
     assert.match(markdown, /Deeper cited synthesis/);
     assert.equal(calls[0].url, "https://api.tavily.com/research");
@@ -240,7 +242,7 @@ process.stdin.on("data", (chunk) => {
   const markdown = await readFile(result.markdownPath, "utf8");
   assert.equal(result.providers[0].name, "notebooklm");
   assert.equal(result.providers[0].mode, "mcp");
-  assert.match(markdown, /> Mode: mcp/);
+  assert.doesNotMatch(markdown, /> Mode: mcp/);
   assert.match(markdown, /NotebookLM deep research report/);
   assert.match(markdown, /Notebook source/);
 });
@@ -270,9 +272,9 @@ test("custom local AI CLI can synthesize provider results", async () => {
     });
 
     const markdown = await readFile(result.markdownPath, "utf8");
-    assert.match(markdown, /## AI Synthesis/);
+    assert.match(markdown, /## Synthesized Brief/);
     assert.match(markdown, /AI OK/);
-    assert.match(markdown, /> \[!success\] custom/);
+    assert.doesNotMatch(markdown, /Command:/);
     assert.match(markdown, /status: "synthesized"/);
   } finally {
     globalThis.fetch = oldFetch;
@@ -304,9 +306,11 @@ test("AI CLI failure is recorded without discarding research outputs", async () 
 
     const markdown = await readFile(result.markdownPath, "utf8");
     assert.match(markdown, /Search survived/);
-    assert.match(markdown, /## AI Synthesis/);
-    assert.match(markdown, /__reallygood_missing_ai_cli__/);
-    assert.match(markdown, /not found|Command failed/i);
+    assert.doesNotMatch(markdown, /## AI Synthesis/);
+    assert.doesNotMatch(markdown, /__reallygood_missing_ai_cli__/);
+    assert.doesNotMatch(markdown, /not found|Command failed/i);
+    const history = JSON.parse(await readFile(result.historyPath, "utf8"));
+    assert.match(history.synthesis.error, /not found|Command failed/i);
     assert.match(await readFile(result.htmlPath, "utf8"), /AI failure should not block Tavily/);
   } finally {
     globalThis.fetch = oldFetch;
@@ -344,7 +348,9 @@ test("built-in AI providers resolve local-bin CLI paths", async () => {
 
     const markdown = await readFile(result.markdownPath, "utf8");
     assert.match(markdown, /LOCAL CLI OK/);
-    assert.match(markdown, new RegExp(fakeClaude.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(markdown, new RegExp(fakeClaude.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    const history = JSON.parse(await readFile(result.historyPath, "utf8"));
+    assert.match(history.synthesis.command, new RegExp(fakeClaude.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   } finally {
     process.env.PATH = oldPath;
     globalThis.fetch = oldFetch;

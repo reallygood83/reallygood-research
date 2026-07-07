@@ -65,8 +65,10 @@ test("C001 mock NotebookLM+Tavily run writes Markdown and HTML", async () => {
   assert.equal(existsSync(htmlPath), true);
   const markdown = await readFile(markdownPath, "utf8");
   assert.match(markdown, /providers:\n  - "notebooklm"\n  - "tavily"/i);
-  assert.match(markdown, /## notebooklm Results/i);
-  assert.match(markdown, /## tavily Results/i);
+  assert.match(markdown, /## NotebookLM Deep Research/i);
+  assert.match(markdown, /## Tavily Web Sources/i);
+  assert.doesNotMatch(markdown, /Research status/);
+  assert.doesNotMatch(markdown, /Provider metadata/);
   const html = await readFile(htmlPath, "utf8");
   assert.match(html, /<h1 id="agentic-ai-vertical-market">Agentic AI vertical market<\/h1>/);
   assert.doesNotMatch(html, /<pre>/);

@@ -816,11 +816,6 @@ function renderMarkdown(request, providerResults, source, now, synthesis) {
     "",
     `# ${request.topic}`,
     "",
-    "> [!summary] Research status",
-    `> Mode: ${describeResearchMode(providerResults, synthesis)}`,
-    `> Providers: ${providerResults.map((provider) => `${provider.name} (${provider.mode})`).join(", ") || "none"}`,
-    `> AI synthesis: ${synthesis?.content ? `completed by ${synthesis.provider}` : synthesis?.error ? `failed by ${synthesis.provider}` : "not used"}`,
-    "",
   ];
 
   if (source) {
@@ -828,19 +823,12 @@ function renderMarkdown(request, providerResults, source, now, synthesis) {
   }
 
   if (synthesis?.content) {
-    lines.push("## AI Synthesis", "", `> [!success] ${synthesis.provider}`, `> Command: \`${synthesis.command}\``, "", synthesis.content, "");
-  } else if (synthesis?.error) {
-    lines.push("## AI Synthesis", "", `> [!failure] ${synthesis.provider}`, `> Command: \`${synthesis.command}\``, `> Error: ${firstLine(synthesis.error)}`, "");
+    lines.push("## Synthesized Brief", "", synthesis.content, "");
   }
 
   for (const provider of providerResults) {
     lines.push(
-      `## ${provider.name} Results`,
-      "",
-      `> [!info] Provider metadata`,
-      `> Mode: ${provider.mode}`,
-      `> Results: ${provider.metadata?.resultCount ?? provider.metadata?.sourcesFound ?? "n/a"}`,
-      `> Request: ${provider.metadata?.requestId || provider.metadata?.taskId || provider.metadata?.notebookId || "n/a"}`,
+      providerTitle(provider),
       "",
       provider.content,
       "",
@@ -848,6 +836,13 @@ function renderMarkdown(request, providerResults, source, now, synthesis) {
   }
 
   return `${lines.join("\n").trim()}\n`;
+}
+
+function providerTitle(provider) {
+  if (provider.name === "notebooklm") return "## NotebookLM Deep Research";
+  if (provider.name === "tavily" && provider.mode === "research") return "## Tavily Deep Research";
+  if (provider.name === "tavily") return "## Tavily Web Sources";
+  return `## ${provider.name} Results`;
 }
 
 function researchStatus(synthesis) {

@@ -60,7 +60,9 @@ test("run command prints and creates markdown and html outputs", async () => {
   const markdown = await readFile(markdownPath, "utf8");
   assert.match(markdown, /tags:\n  - research\n  - reallygood-research/);
   assert.match(markdown, /research_mode: "NotebookLM deep research"/);
-  assert.match(markdown, /## tavily Results/);
+  assert.match(markdown, /## Tavily Web Sources/);
+  assert.doesNotMatch(markdown, /Research status/);
+  assert.doesNotMatch(markdown, /Provider metadata/);
   const html = await readFile(htmlPath, "utf8");
   assert.match(html, /<h1 id="agentic-ai-vertical-market">Agentic AI vertical market<\/h1>/);
   assert.doesNotMatch(html, /<pre>/);
