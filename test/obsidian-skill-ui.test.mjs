@@ -19,12 +19,13 @@ test("Obsidian manifest exposes a standalone plugin shell", async () => {
 test("Obsidian main.js registers a runnable research console without provider logic", async () => {
   const source = await read("main.js");
 
-  assert.match(source, /bin", "deep-research\.mjs/);
+  assert.match(source, /src", "index\.mjs/);
   assert.match(source, /"run"/);
   assert.match(source, /addCommand/);
   assert.match(source, /addRibbonIcon/);
   assert.match(source, /addSettingTab/);
-  assert.match(source, /spawn\(process\.execPath/);
+  assert.match(source, /runResearchPublish/);
+  assert.doesNotMatch(source, /child_process|spawn\(process\.execPath|cliScript/);
   assert.match(source, /--providers/);
   assert.match(source, /--vault-dir/);
   assert.match(source, /vaultDir: "\."/);

@@ -1,10 +1,8 @@
 const { Modal, Notice, Plugin, PluginSettingTab, Setting } = require("obsidian");
-const { spawn } = require("node:child_process");
-const { existsSync } = require("node:fs");
 const { isAbsolute, join } = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const DEFAULT_SETTINGS = {
-  cliScript: "",
   providers: "notebooklm,tavily",
   vaultDir: ".",
   html: true,
@@ -30,7 +28,7 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
       id: "copy-research-command",
       name: "Copy deep research command",
       callback: async () => {
-        await navigator.clipboard.writeText(this.buildCommand("Research topic").join(" "));
+        await navigator.clipboard.writeText(this.buildCommandPreview("Research topic"));
         new Notice("ReallyGood Research command copied.");
       },
     });
@@ -47,9 +45,8 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
     return isAbsolute(dir) ? dir : join(this.getVaultBasePath(), dir);
   }
 
-  getCliScriptPath() {
-    const configured = this.settings.cliScript.trim();
-    return configured || join(this.getPluginDir(), "bin", "deep-research.mjs");
+  getCoreModuleUrl() {
+    return pathToFileURL(join(this.getPluginDir(), "src", "index.mjs")).href;
   }
 
   getOutputDir() {
@@ -57,10 +54,22 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
     return isAbsolute(dir) ? dir : join(this.getVaultBasePath(), dir);
   }
 
-  buildCommand(topic) {
+  buildRequest(topic) {
+    return {
+      topic,
+      providers: this.settings.providers.trim() || DEFAULT_SETTINGS.providers,
+      agent: "obsidian",
+      vaultDir: this.getOutputDir(),
+      html: this.settings.html,
+      mock: this.settings.mock,
+      tavilyKeyless: this.settings.tavilyKeyless,
+    };
+  }
+
+  buildCommandPreview(topic) {
     const args = [
-      quote(process.execPath),
-      quote(this.getCliScriptPath()),
+      "node",
+      "bin/deep-research.mjs",
       "run",
       "--topic",
       quote(topic),
@@ -75,32 +84,16 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
     if (this.settings.html) args.push("--html");
     if (this.settings.mock) args.push("--mock");
     if (this.settings.tavilyKeyless) args.push("--tavily-keyless");
-    return args;
+    return args.join(" ");
   }
 
-  runResearch(topic, onData) {
-    const cliScript = this.getCliScriptPath();
-    if (!existsSync(cliScript)) {
-      throw new Error(`CLI script not found: ${cliScript}`);
-    }
-
-    const args = this.buildCommand(topic).slice(1).map(unquote);
-    const child = spawn(process.execPath, args, {
-      cwd: this.getVaultBasePath(),
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    child.stdout.on("data", (chunk) => onData(String(chunk)));
-    child.stderr.on("data", (chunk) => onData(String(chunk)));
-
-    return new Promise((resolve, reject) => {
-      child.on("error", reject);
-      child.on("close", (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`Research command exited with ${code}`));
-      });
-    });
+  async runResearch(topic, onData) {
+    const { runResearchPublish } = await import(this.getCoreModuleUrl());
+    const result = await runResearchPublish(this.buildRequest(topic));
+    onData(`Markdown: ${result.markdownPath}\n`);
+    if (result.htmlPath) onData(`HTML: ${result.htmlPath}\n`);
+    onData(`History: ${result.historyPath}\n`);
+    return result;
   }
 
   async saveSettings() {
@@ -219,19 +212,6 @@ class ResearchSettingTab extends PluginSettingTab {
     containerEl.createEl("h2", { text: "ReallyGood Research" });
 
     new Setting(containerEl)
-      .setName("CLI script")
-      .setDesc("Leave blank to use the bundled bin/deep-research.mjs installed by BRAT.")
-      .addText((text) =>
-        text
-          .setPlaceholder("Bundled CLI")
-          .setValue(this.plugin.settings.cliScript)
-          .onChange(async (value) => {
-            this.plugin.settings.cliScript = value.trim();
-            await this.plugin.saveSettings();
-          }),
-      );
-
-    new Setting(containerEl)
       .setName("Providers")
       .setDesc("Comma-separated: notebooklm,tavily,odysseus.")
       .addText((text) =>
@@ -270,8 +250,4 @@ class ResearchSettingTab extends PluginSettingTab {
 
 function quote(value) {
   return `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-}
-
-function unquote(value) {
-  return String(value).replace(/^"|"$/g, "").replaceAll('\\"', '"').replaceAll("\\\\", "\\");
 }
