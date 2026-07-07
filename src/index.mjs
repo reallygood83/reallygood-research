@@ -331,7 +331,7 @@ function resolveAiCommand(provider, aiCommand) {
     codex: "codex exec -",
     claude: "claude -p",
     gemini: "gemini -p",
-    grok: "grok -p",
+    grok: 'grok -p "$(cat)"',
   };
   const command = commands[provider];
   if (!command) {
