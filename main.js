@@ -8,20 +8,26 @@ const PROVIDER_OPTIONS = [
   ["tavily", "Tavily"],
   ["odysseus", "Odysseus"],
 ];
+const SETTINGS_VERSION = 2;
 
 const DEFAULT_SETTINGS = {
-  providers: "notebooklm,tavily",
+  providers: "tavily",
   vaultDir: ".",
   html: true,
-  mock: true,
-  tavilyKeyless: false,
+  mock: false,
+  tavilyKeyless: true,
   aiProvider: "none",
   aiCommand: "",
+  settingsVersion: SETTINGS_VERSION,
 };
 
 module.exports = class ReallyGoodResearchPlugin extends Plugin {
   async onload() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const savedSettings = await this.loadData();
+    this.settings = migrateSettings(Object.assign({}, DEFAULT_SETTINGS, savedSettings || {}), savedSettings || {});
+    if (this.settings.settingsVersion !== savedSettings?.settingsVersion) {
+      await this.saveSettings();
+    }
 
     this.addRibbonIcon("search", "ReallyGood Research", () => {
       new ResearchModal(this.app, this).open();
@@ -201,7 +207,8 @@ class ResearchModal extends Modal {
 
     const runSection = createSection(contentEl, "Run mode");
     new Setting(runSection)
-      .setName("Mock mode")
+      .setName("Test mode")
+      .setDesc("Creates fake local output only. Turn this off for deep research.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.mock).onChange(async (value) => {
           this.plugin.settings.mock = value;
@@ -305,7 +312,7 @@ class ResearchModal extends Modal {
       `Providers: ${this.plugin.settings.providers}`,
       `Folder: ${this.plugin.settings.vaultDir || DEFAULT_SETTINGS.vaultDir}`,
       `HTML: ${this.plugin.settings.html ? "on" : "off"}`,
-      `Mode: ${this.plugin.settings.mock ? "mock" : "live"}`,
+      `Mode: ${this.plugin.settings.mock ? "test/mock" : "deep research"}`,
       `Tavily: ${this.plugin.settings.tavilyKeyless ? "keyless" : "env/API key"}`,
       `AI: ${this.plugin.settings.aiProvider || "none"}`,
     ].join(" | ");
@@ -430,6 +437,26 @@ function createSection(parent, heading) {
   const section = parent.createDiv({ cls: "reallygood-research-section" });
   section.createEl("h3", { text: heading });
   return section;
+}
+
+function migrateSettings(settings, savedSettings) {
+  if (!savedSettings.settingsVersion) {
+    const oldDemoDefaults =
+      settings.mock === true &&
+      !settings.tavilyKeyless &&
+      normalizeProviders(settings.providers).join(",") === "notebooklm,tavily";
+
+    if (oldDemoDefaults) {
+      settings.providers = "tavily";
+      settings.mock = false;
+      settings.tavilyKeyless = true;
+      if (settings.aiProvider === "codex" && !settings.aiCommand) {
+        settings.aiProvider = "none";
+      }
+    }
+  }
+  settings.settingsVersion = SETTINGS_VERSION;
+  return settings;
 }
 
 const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily", "odysseus"]);

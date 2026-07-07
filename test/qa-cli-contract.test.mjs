@@ -71,6 +71,7 @@ test("C001 mock NotebookLM+Tavily run writes Markdown and HTML", async () => {
 test("C002 missing TAVILY_API_KEY without --mock fails safely and creates no output", async () => {
   const dir = await mkdtemp(join(tmpdir(), "drp-c002-"));
   const vaultDir = join(dir, "vault");
+  const homeDir = join(dir, "home");
 
   const result = await runCli(
     [
@@ -85,7 +86,7 @@ test("C002 missing TAVILY_API_KEY without --mock fails safely and creates no out
       vaultDir,
       "--html",
     ],
-    { withoutTavilyKey: true },
+    { withoutTavilyKey: true, env: { HOME: homeDir } },
   );
 
   assert.notEqual(result.code, 0);

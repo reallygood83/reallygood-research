@@ -79,6 +79,7 @@ test("Obsidian main.js runs after BRAT installs only manifest, main, and styles"
   plugin.app = { vault: { adapter: { getBasePath: () => vaultDir } } };
   plugin.manifest = { id: "reallygood-research", dir: ".obsidian/plugins/reallygood-research" };
   await plugin.onload();
+  plugin.settings.mock = true;
 
   const result = await plugin.runResearch("BRAT standalone smoke", () => {});
   assert.equal(existsSync(result.markdownPath), true);
@@ -86,6 +87,53 @@ test("Obsidian main.js runs after BRAT installs only manifest, main, and styles"
   assert.equal(existsSync(result.historyPath), true);
   assert.match(await readFile(result.markdownPath, "utf8"), /BRAT standalone smoke/);
   assert.match(await readFile(result.htmlPath, "utf8"), /BRAT standalone smoke/);
+});
+
+test("Obsidian plugin migrates old demo defaults to real Tavily deep research", async () => {
+  const module = { exports: {} };
+  class Plugin {
+    async loadData() {
+      return {
+        providers: "notebooklm,tavily",
+        vaultDir: "000-research",
+        html: true,
+        mock: true,
+        tavilyKeyless: false,
+        aiProvider: "codex",
+        aiCommand: "",
+      };
+    }
+    async saveData(data) {
+      this.savedData = data;
+    }
+    addRibbonIcon() {}
+    addCommand() {}
+    addSettingTab() {}
+  }
+  class Modal {}
+  class PluginSettingTab {}
+  class Setting {}
+  const Notice = function Notice(message) {
+    return message;
+  };
+  const requireStub = (id) => {
+    if (id === "obsidian") return { Modal, Notice, Plugin, PluginSettingTab, Setting };
+    return require(id);
+  };
+  const source = await read("main.js");
+  Function("require", "module", "exports", source)(requireStub, module, module.exports);
+
+  const PluginClass = module.exports;
+  const plugin = new PluginClass();
+  plugin.app = { vault: { adapter: { getBasePath: () => "/tmp" } } };
+  plugin.manifest = { id: "reallygood-research", dir: ".obsidian/plugins/reallygood-research" };
+  await plugin.onload();
+
+  assert.equal(plugin.settings.providers, "tavily");
+  assert.equal(plugin.settings.mock, false);
+  assert.equal(plugin.settings.tavilyKeyless, true);
+  assert.equal(plugin.settings.aiProvider, "none");
+  assert.equal(plugin.savedData.settingsVersion, 2);
 });
 
 test("agent skill templates call the shared CLI contract", async () => {

@@ -50,15 +50,24 @@ test("unknown providers are rejected instead of silently falling back", async ()
 });
 
 test("tavily keyless is explicit opt-in", async () => {
-  await assert.rejects(
-    () =>
-      runResearchPublish({
-        topic: "No accidental credits",
-        providers: ["tavily"],
-        vaultDir: tmpdir(),
-      }),
-    /TAVILY_API_KEY or --tavily-keyless/,
-  );
+  const dir = await mkdtemp(join(tmpdir(), "drp-no-env-"));
+  const oldKey = process.env.TAVILY_API_KEY;
+  delete process.env.TAVILY_API_KEY;
+  try {
+    await assert.rejects(
+      () =>
+        runResearchPublish({
+          topic: "No accidental credits",
+          providers: ["tavily"],
+          vaultDir: dir,
+          envFile: join(dir, ".missing-env"),
+        }),
+      /TAVILY_API_KEY or --tavily-keyless/,
+    );
+  } finally {
+    if (oldKey === undefined) delete process.env.TAVILY_API_KEY;
+    else process.env.TAVILY_API_KEY = oldKey;
+  }
 });
 
 test("tavily api key can be saved and loaded from local env file", async () => {
@@ -75,9 +84,10 @@ test("tavily api key can be saved and loaded from local env file", async () => {
 });
 
 test("tavily extract requires explicit key or keyless mode", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "drp-no-extract-env-"));
   delete process.env.TAVILY_API_KEY;
   await assert.rejects(
-    () => tavilyExtract({ url: "https://example.com" }),
+    () => tavilyExtract({ url: "https://example.com", envFile: join(dir, ".missing-env") }),
     /Tavily extract requires TAVILY_API_KEY or tavilyKeyless=true/,
   );
 });
