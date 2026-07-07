@@ -22,4 +22,4 @@ If Tavily live search is needed, ask the user for their API key and save it loca
 node bin/deep-research.mjs setup tavily
 ```
 
-Omit `--mock` only when real provider credentials are ready. Treat stdout, MCP tool results, and written files from the CLI as the handoff. Claude Code may edit the final Markdown only after the CLI has produced it.
+MCP exposes `run_research`, `setup_tavily`, `tavily_search`, and `tavily_extract`. Omit `--mock` only when real provider credentials are ready. Treat stdout, MCP tool results, and written files from the CLI as the handoff. Claude Code may edit the final Markdown only after the CLI has produced it.

@@ -22,4 +22,4 @@ If Tavily live search is needed, ask the user for their API key and save it loca
 node bin/deep-research.mjs setup tavily
 ```
 
-Omit `--mock` only when real provider credentials are ready. Use the CLI or MCP result as the source of truth for generated Markdown, HTML export paths, and history. Keep Codex-side work to prompt shaping, file review, and verification.
+MCP exposes `run_research`, `setup_tavily`, `tavily_search`, and `tavily_extract`. Omit `--mock` only when real provider credentials are ready. Use the CLI or MCP result as the source of truth for generated Markdown, HTML export paths, and history. Keep Codex-side work to prompt shaping, file review, and verification.

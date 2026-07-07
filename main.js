@@ -66,6 +66,11 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
     };
   }
 
+  async saveTavilyApiKey(apiKey) {
+    const { saveTavilyApiKey } = await import(this.getCoreModuleUrl());
+    return saveTavilyApiKey(apiKey);
+  }
+
   buildCommandPreview(topic) {
     const args = [
       "node",
@@ -210,6 +215,7 @@ class ResearchSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "ReallyGood Research" });
+    let tavilyApiKey = "";
 
     new Setting(containerEl)
       .setName("Providers")
@@ -243,6 +249,29 @@ class ResearchSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.tavilyKeyless).onChange(async (value) => {
           this.plugin.settings.tavilyKeyless = value;
           await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Tavily API key")
+      .setDesc("Saved to ~/.reallygood-research.env, not to Obsidian settings.")
+      .addText((text) => {
+        text
+          .setPlaceholder("tvly-...")
+          .onChange((value) => {
+            tavilyApiKey = value.trim();
+          });
+        text.inputEl.setAttribute("type", "password");
+      })
+      .addButton((button) =>
+        button.setButtonText("Save key").onClick(async () => {
+          try {
+            const result = await this.plugin.saveTavilyApiKey(tavilyApiKey);
+            tavilyApiKey = "";
+            new Notice(`Saved Tavily API key to ${result.envFile}`);
+          } catch (error) {
+            new Notice(error instanceof Error ? error.message : String(error));
+          }
         }),
       );
   }

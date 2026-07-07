@@ -5,7 +5,7 @@ const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily", "odysseus"]);
 
 export const requestSchema = {
   required: ["topic", "providers", "vaultDir"],
-  optional: ["agent", "sourceFile", "html", "mock", "tavilyKeyless", "envFile"],
+  optional: ["agent", "sourceFile", "html", "mock", "tavilyKeyless", "envFile", "searchDepth", "maxResults", "chunksPerSource", "includeAnswer"],
   providers: [...SUPPORTED_PROVIDERS],
 };
 
@@ -41,6 +41,10 @@ export function validateResearchRequest(input) {
     mock: Boolean(input.mock),
     tavilyKeyless: Boolean(input.tavilyKeyless),
     envFile: stringValue(input.envFile) || defaultEnvFile(),
+    searchDepth: stringValue(input.searchDepth) || "advanced",
+    maxResults: numberValue(input.maxResults, 5),
+    chunksPerSource: numberValue(input.chunksPerSource, 3),
+    includeAnswer: input.includeAnswer === undefined ? true : Boolean(input.includeAnswer),
   };
 }
 
@@ -157,6 +161,11 @@ function stringValue(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function numberValue(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
 async function readSource(sourceFile) {
   if (!sourceFile) {
     return "";
@@ -185,30 +194,15 @@ async function runProvider(name, request, source) {
 }
 
 async function runTavilyProvider(request) {
-  const headers = { "Content-Type": "application/json" };
-  if (process.env.TAVILY_API_KEY) {
-    headers.Authorization = `Bearer ${process.env.TAVILY_API_KEY}`;
-  } else if (request.tavilyKeyless) {
-    headers["X-Tavily-Access-Mode"] = "keyless";
-  } else {
-    throw new Error("Tavily provider requires TAVILY_API_KEY or --tavily-keyless; rerun with --mock for local mock mode");
-  }
-
-  const response = await fetch("https://api.tavily.com/search", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      query: request.topic,
-      search_depth: "basic",
-      max_results: 5,
-      include_answer: true,
-    }),
+  const payload = await tavilySearch({
+    query: request.topic,
+    searchDepth: request.searchDepth,
+    maxResults: request.maxResults,
+    chunksPerSource: request.chunksPerSource,
+    includeAnswer: request.includeAnswer,
+    tavilyKeyless: request.tavilyKeyless,
+    envFile: request.envFile,
   });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(`Tavily search failed (${response.status}): ${payload.error || payload.message || response.statusText}`);
-  }
 
   const results = Array.isArray(payload.results) ? payload.results : [];
   return {
@@ -219,9 +213,74 @@ async function runTavilyProvider(request) {
       resultCount: results.length,
       requestId: payload.request_id || null,
       credits: payload.usage?.credits ?? null,
+      searchDepth: request.searchDepth,
     },
     content: renderTavilyContent(payload, results),
   };
+}
+
+export async function tavilySearch(input) {
+  const query = stringValue(input?.query);
+  if (!query) throw new Error("Missing required option: query");
+  await loadEnvFile(stringValue(input.envFile) || defaultEnvFile());
+  const headers = { "Content-Type": "application/json" };
+  if (process.env.TAVILY_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.TAVILY_API_KEY}`;
+  } else if (input.tavilyKeyless) {
+    headers["X-Tavily-Access-Mode"] = "keyless";
+  } else {
+    throw new Error("Tavily provider requires TAVILY_API_KEY or --tavily-keyless; rerun with --mock for local mock mode");
+  }
+
+  const response = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      query,
+      search_depth: stringValue(input.searchDepth) || "advanced",
+      max_results: numberValue(input.maxResults, 5),
+      chunks_per_source: numberValue(input.chunksPerSource, 3),
+      include_answer: input.includeAnswer === undefined ? true : Boolean(input.includeAnswer),
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`Tavily search failed (${response.status}): ${payload.error || payload.message || response.statusText}`);
+  }
+  return payload;
+}
+
+export async function tavilyExtract(input) {
+  const urls = Array.isArray(input?.urls) ? input.urls.filter(Boolean) : [stringValue(input?.url)].filter(Boolean);
+  if (!urls.length) throw new Error("Missing required option: url or urls");
+  await loadEnvFile(stringValue(input.envFile) || defaultEnvFile());
+  const headers = { "Content-Type": "application/json" };
+  if (process.env.TAVILY_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.TAVILY_API_KEY}`;
+  } else if (input.tavilyKeyless) {
+    headers["X-Tavily-Access-Mode"] = "keyless";
+  } else {
+    throw new Error("Tavily extract requires TAVILY_API_KEY or tavilyKeyless=true");
+  }
+
+  const response = await fetch("https://api.tavily.com/extract", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      urls,
+      extract_depth: stringValue(input.extractDepth) || "basic",
+      format: stringValue(input.format) || "markdown",
+      include_images: Boolean(input.includeImages),
+      include_favicon: Boolean(input.includeFavicon),
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`Tavily extract failed (${response.status}): ${payload.error || payload.message || response.statusText}`);
+  }
+  return payload;
 }
 
 function renderTavilyContent(payload, results) {

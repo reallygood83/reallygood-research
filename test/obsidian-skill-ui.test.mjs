@@ -25,6 +25,9 @@ test("Obsidian main.js registers a runnable research console without provider lo
   assert.match(source, /addRibbonIcon/);
   assert.match(source, /addSettingTab/);
   assert.match(source, /runResearchPublish/);
+  assert.match(source, /saveTavilyApiKey/);
+  assert.match(source, /Tavily API key/);
+  assert.match(source, /type", "password"/);
   assert.doesNotMatch(source, /child_process|spawn\(process\.execPath|cliScript/);
   assert.match(source, /--providers/);
   assert.match(source, /--vault-dir/);

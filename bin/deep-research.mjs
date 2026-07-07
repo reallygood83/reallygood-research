@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { defaultEnvFile, runResearchPublish, saveTavilyApiKey } from "../src/index.mjs";
+import { defaultEnvFile, runResearchPublish, saveTavilyApiKey, tavilyExtract, tavilySearch } from "../src/index.mjs";
 
 const args = process.argv.slice(2);
 
@@ -105,6 +105,14 @@ async function callTool(params = {}) {
     const result = await saveTavilyApiKey(args.apiKey, args.envFile || defaultEnvFile());
     return { content: [{ type: "text", text: `Saved Tavily API key to ${result.envFile}` }] };
   }
+  if (name === "tavily_search") {
+    const result = await tavilySearch(args);
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  }
+  if (name === "tavily_extract") {
+    const result = await tavilyExtract(args);
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  }
   throw new Error(`Unknown tool: ${name}`);
 }
 
@@ -126,6 +134,10 @@ function tools() {
           mock: { type: "boolean" },
           tavilyKeyless: { type: "boolean" },
           envFile: { type: "string" },
+          searchDepth: { type: "string", enum: ["ultra-fast", "fast", "basic", "advanced"] },
+          maxResults: { type: "number" },
+          chunksPerSource: { type: "number" },
+          includeAnswer: { type: "boolean" },
         },
       },
     },
@@ -137,6 +149,40 @@ function tools() {
         required: ["apiKey"],
         properties: {
           apiKey: { type: "string" },
+          envFile: { type: "string" },
+        },
+      },
+    },
+    {
+      name: "tavily_search",
+      description: "Search the web with Tavily Search. Keyless mode supports Search without an API key.",
+      inputSchema: {
+        type: "object",
+        required: ["query"],
+        properties: {
+          query: { type: "string" },
+          searchDepth: { type: "string", enum: ["ultra-fast", "fast", "basic", "advanced"] },
+          maxResults: { type: "number" },
+          chunksPerSource: { type: "number" },
+          includeAnswer: { type: "boolean" },
+          tavilyKeyless: { type: "boolean" },
+          envFile: { type: "string" },
+        },
+      },
+    },
+    {
+      name: "tavily_extract",
+      description: "Extract clean content from one or more URLs with Tavily Extract. Keyless mode supports Extract without an API key.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          urls: { type: "array", items: { type: "string" } },
+          extractDepth: { type: "string", enum: ["basic", "advanced"] },
+          format: { type: "string", enum: ["markdown", "text"] },
+          includeImages: { type: "boolean" },
+          includeFavicon: { type: "boolean" },
+          tavilyKeyless: { type: "boolean" },
           envFile: { type: "string" },
         },
       },

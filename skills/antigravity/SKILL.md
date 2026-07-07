@@ -22,4 +22,4 @@ If Tavily live search is needed, ask the user for their API key and save it loca
 node bin/deep-research.mjs setup tavily
 ```
 
-Omit `--mock` only when real provider credentials are ready. Keep Antigravity instructions focused on selecting inputs, checking saved outputs, and reporting verification evidence.
+MCP exposes `run_research`, `setup_tavily`, `tavily_search`, and `tavily_extract`. Omit `--mock` only when real provider credentials are ready. Keep Antigravity instructions focused on selecting inputs, checking saved outputs, and reporting verification evidence.

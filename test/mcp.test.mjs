@@ -48,7 +48,7 @@ test("mcp server lists tools and runs mock research", async () => {
   assert.equal(responses[0].result.serverInfo.name, "reallygood-research");
   assert.deepEqual(
     responses[1].result.tools.map((tool) => tool.name),
-    ["run_research", "setup_tavily"],
+    ["run_research", "setup_tavily", "tavily_search", "tavily_extract"],
   );
 
   const payload = JSON.parse(responses[2].result.content[0].text);

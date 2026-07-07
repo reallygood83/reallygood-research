@@ -13,6 +13,8 @@ The plugin is desktop-only because it writes files directly into your local vaul
 
 No Node path or CLI setup is required for the Obsidian plugin. The first run uses mock mode so it can create Markdown, HTML, and history files immediately after BRAT installation. For real Tavily search without an API key, turn off `Mock mode` and turn on `Tavily keyless` in the console.
 
+To use a Tavily API key from the plugin, open the plugin settings, paste the key into `Tavily API key`, and click `Save key`. The key is saved to `~/.reallygood-research.env`, not to Obsidian settings.
+
 ## CLI
 
 ```sh
@@ -63,6 +65,8 @@ It exposes:
 
 - `run_research`
 - `setup_tavily`
+- `tavily_search`
+- `tavily_extract`
 
 Example MCP server config shape:
 
@@ -76,3 +80,5 @@ Example MCP server config shape:
   }
 }
 ```
+
+`tavily_search` defaults to `searchDepth: "advanced"`, `maxResults: 5`, `chunksPerSource: 3`, and `includeAnswer: true`, matching Tavily's agent-oriented guidance for stronger source evidence. Keyless mode works for Search and Extract; Tavily Crawl, Map, and Research require an API key.
