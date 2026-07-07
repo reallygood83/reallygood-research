@@ -61,7 +61,7 @@ export async function runResearchPublish(input) {
   const providerResults = await Promise.all(
     request.providers.map((provider) => runProvider(provider, request, source)),
   );
-  const synthesis = await runAiSynthesis(request, providerResults, source);
+  const synthesis = await runAiSynthesisSafely(request, providerResults, source);
 
   const now = new Date();
   const slug = slugify(request.topic);
@@ -89,7 +89,9 @@ export async function runResearchPublish(input) {
     sourceName: request.sourceFile ? basename(request.sourceFile) : null,
     createdAt: now.toISOString(),
     providers: providerResults.map(({ name, mode, metadata }) => ({ name, mode, metadata })),
-    synthesis: synthesis ? { provider: synthesis.provider, command: synthesis.command } : null,
+    synthesis: synthesis
+      ? { provider: synthesis.provider, command: synthesis.command, error: synthesis.error || null }
+      : null,
     outputs: { markdownPath, htmlPath },
   };
   await writeFile(historyPath, `${JSON.stringify(history, null, 2)}\n`, "utf8");
@@ -532,6 +534,19 @@ async function runAiSynthesis(request, providerResults, source) {
   };
 }
 
+async function runAiSynthesisSafely(request, providerResults, source) {
+  try {
+    return await runAiSynthesis(request, providerResults, source);
+  } catch (error) {
+    return {
+      provider: request.aiProvider,
+      command: resolveAiCommand(request.aiProvider, request.aiCommand),
+      error: error instanceof Error ? error.message : String(error),
+      content: "",
+    };
+  }
+}
+
 function resolveAiCommand(provider, aiCommand) {
   if (aiCommand) return aiCommand;
   const commands = {
@@ -635,6 +650,8 @@ function renderMarkdown(request, providerResults, source, now, synthesis) {
 
   if (synthesis?.content) {
     lines.push("## AI Synthesis", "", `provider: ${synthesis.provider}`, `command: ${synthesis.command}`, "", synthesis.content, "");
+  } else if (synthesis?.error) {
+    lines.push("## AI Synthesis", "", `provider: ${synthesis.provider}`, `command: ${synthesis.command}`, `error: ${synthesis.error}`, "");
   }
 
   for (const provider of providerResults) {

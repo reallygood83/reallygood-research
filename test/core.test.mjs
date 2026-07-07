@@ -223,3 +223,37 @@ test("custom local AI CLI can synthesize provider results", async () => {
     globalThis.fetch = oldFetch;
   }
 });
+
+test("AI CLI failure is recorded without discarding research outputs", async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      answer: "Search survived",
+      results: [{ title: "Source", url: "https://example.com", content: "Evidence" }],
+      request_id: "ai-fail-test",
+    }),
+  });
+
+  try {
+    const dir = await mkdtemp(join(tmpdir(), "drp-ai-fail-"));
+    const result = await runResearchPublish({
+      topic: "AI failure should not block Tavily",
+      providers: "tavily",
+      vaultDir: dir,
+      tavilyKeyless: true,
+      aiProvider: "custom",
+      aiCommand: "__reallygood_missing_ai_cli__",
+      html: true,
+    });
+
+    const markdown = await readFile(result.markdownPath, "utf8");
+    assert.match(markdown, /Search survived/);
+    assert.match(markdown, /## AI Synthesis/);
+    assert.match(markdown, /__reallygood_missing_ai_cli__/);
+    assert.match(markdown, /not found|Command failed/i);
+    assert.match(await readFile(result.htmlPath, "utf8"), /AI failure should not block Tavily/);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});

@@ -144,7 +144,7 @@ test("Obsidian plugin migrates old demo defaults to real Tavily deep research", 
   assert.equal(plugin.settings.aiProvider, "none");
   assert.equal(plugin.settings.notebooklmMcpCommand, "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run notebooklm-mcp");
   assert.equal(plugin.settings.notebooklmLoginCommand, "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run nlm login");
-  assert.equal(plugin.savedData.settingsVersion, 6);
+  assert.equal(plugin.savedData.settingsVersion, 7);
 });
 
 test("Obsidian plugin can run the configured NotebookLM login command", async () => {
