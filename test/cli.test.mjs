@@ -62,7 +62,7 @@ test("run command prints and creates markdown and html outputs", async () => {
   assert.match(markdown, /research_mode: "NotebookLM deep research"/);
   assert.match(markdown, /## tavily Results/);
   const html = await readFile(htmlPath, "utf8");
-  assert.match(html, /<h1>Agentic AI vertical market<\/h1>/);
+  assert.match(html, /<h1 id="agentic-ai-vertical-market">Agentic AI vertical market<\/h1>/);
   assert.doesNotMatch(html, /<pre>/);
 });
 

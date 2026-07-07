@@ -422,6 +422,27 @@ function renderNotebookLmContent(start, status) {
 }
 
 async function runTavilyProvider(request) {
+  if (!request.tavilyKeyless) {
+    const research = await tavilyResearch({
+      input: request.topic,
+      envFile: request.envFile,
+      model: "mini",
+      outputLength: "long",
+    });
+    return {
+      name: "tavily",
+      mode: "research",
+      metadata: {
+        topic: request.topic,
+        requestId: research.request_id || null,
+        status: research.status || null,
+        credits: research.usage?.credits ?? null,
+        model: research.model || "mini",
+      },
+      content: renderTavilyResearchContent(research),
+    };
+  }
+
   const payload = await tavilySearch({
     query: request.topic,
     searchDepth: request.searchDepth,
@@ -445,6 +466,51 @@ async function runTavilyProvider(request) {
     },
     content: renderTavilyContent(payload, results),
   };
+}
+
+export async function tavilyResearch(input) {
+  const query = stringValue(input?.input || input?.query);
+  if (!query) throw new Error("Missing required option: input");
+  await loadEnvFile(stringValue(input.envFile) || defaultEnvFile());
+  if (!process.env.TAVILY_API_KEY) throw new Error("Tavily Research requires TAVILY_API_KEY or --tavily-keyless");
+
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${process.env.TAVILY_API_KEY}` };
+  const createResponse = await fetch("https://api.tavily.com/research", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      input: query,
+      model: stringValue(input.model) || "mini",
+      output_length: stringValue(input.outputLength) || "long",
+    }),
+  });
+  const created = await createResponse.json().catch(() => ({}));
+  if (!createResponse.ok) {
+    throw new Error(`Tavily research failed (${createResponse.status}): ${created.error || created.message || createResponse.statusText}`);
+  }
+
+  const requestId = created.request_id || created.id;
+  if (!requestId) return created;
+  return pollTavilyResearch(requestId, headers, numberValue(input.maxWaitSeconds, 900));
+}
+
+async function pollTavilyResearch(requestId, headers, maxWaitSeconds) {
+  const deadline = Date.now() + maxWaitSeconds * 1000;
+  let last = null;
+  while (Date.now() < deadline) {
+    const response = await fetch(`https://api.tavily.com/research/${encodeURIComponent(requestId)}`, { headers });
+    last = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(`Tavily research status failed (${response.status}): ${last.error || last.message || response.statusText}`);
+    }
+    const status = String(last.status || "").toLowerCase();
+    if (["completed", "complete", "succeeded", "success"].includes(status)) return last;
+    if (["failed", "error", "cancelled", "canceled"].includes(status)) {
+      throw new Error(`Tavily research failed: ${last.error || last.message || status}`);
+    }
+    await delay(5000);
+  }
+  throw new Error(`Tavily research timed out: ${requestId}`);
 }
 
 export async function tavilySearch(input) {
@@ -685,9 +751,30 @@ function renderTavilyContent(payload, results) {
   return lines.join("\n").trim() || "No Tavily results returned.";
 }
 
+function renderTavilyResearchContent(payload) {
+  const report = payload.report || payload.answer || payload.output || payload.result || "";
+  const lines = ["### Tavily Research Report", "", String(report || "Tavily research completed without a report payload.").trim(), ""];
+  const sources = Array.isArray(payload.sources) ? payload.sources : Array.isArray(payload.results) ? payload.results : [];
+  if (sources.length) {
+    lines.push("### Tavily Research Sources", "");
+    for (const source of sources) {
+      const title = source.title || source.url || "Source";
+      const url = source.url ? `(${source.url})` : "";
+      lines.push(`- [${truncateText(title, 140)}]${url}`);
+      const snippet = truncateText(source.content || source.snippet || source.raw_content || "", 300);
+      if (snippet) lines.push(`  - ${snippet}`);
+    }
+  }
+  return lines.join("\n").trim();
+}
+
 function truncateText(value, maxLength) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   return text.length > maxLength ? `${text.slice(0, maxLength - 3).trim()}...` : text;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function mockProviderContent(name, topic, source) {
@@ -772,6 +859,7 @@ function researchStatus(synthesis) {
 function describeResearchMode(providerResults, synthesis) {
   const providers = providerResults.map((provider) => provider.name);
   if (providers.includes("notebooklm")) return "NotebookLM deep research";
+  if (providerResults.some((provider) => provider.name === "tavily" && provider.mode === "research")) return "Tavily deep research";
   if (providers.includes("tavily")) return synthesis?.content ? "Tavily search + AI synthesis" : "Tavily search";
   return "research";
 }
@@ -781,6 +869,7 @@ function firstLine(value) {
 }
 
 export function renderHtml(request, markdown) {
+  const report = markdownToHtml(markdown);
   return [
     "<!doctype html>",
     '<html lang="en">',
@@ -789,19 +878,31 @@ export function renderHtml(request, markdown) {
     '  <meta name="viewport" content="width=device-width, initial-scale=1">',
     `  <title>${escapeHtml(request.topic)}</title>`,
     "  <style>",
-    "    body{margin:0;background:#f7f4ee;color:#1f2328;font:17px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}",
-    "    main{max-width:920px;margin:0 auto;padding:48px 28px 72px}",
-    "    h1{font-size:2.2rem;line-height:1.2;margin:0 0 28px} h2{border-top:1px solid #ded8cc;padding-top:28px;margin-top:36px} h3{margin-top:24px}",
-    "    p,li{word-break:keep-all} blockquote{margin:20px 0;padding:12px 18px;border-left:4px solid #c76542;background:#fffaf1;color:#424242}",
-    "    ul{padding-left:1.4rem} a{color:#9b3f25} hr{border:0;border-top:1px solid #ded8cc;margin:32px 0}",
-    "    code{background:#eee6da;padding:2px 5px;border-radius:4px} .meta{color:#7a7168;font-size:.92rem;margin-bottom:28px}",
+    "    :root{--bg:#f6f1e8;--paper:#fffaf1;--ink:#20242a;--muted:#776f66;--line:#ddd3c4;--accent:#c45f3d}",
+    "    *{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.68 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}",
+    "    .shell{display:grid;grid-template-columns:280px minmax(0,920px);gap:36px;max-width:1280px;margin:0 auto;padding:36px 28px 80px}",
+    "    aside{position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow:auto;padding:20px;border:1px solid var(--line);background:rgba(255,250,241,.72)}",
+    "    aside strong{display:block;margin-bottom:12px} nav a{display:block;color:var(--muted);text-decoration:none;padding:7px 0;border-top:1px solid rgba(221,211,196,.55);font-size:.92rem} nav a:hover{color:var(--accent)}",
+    "    main{min-width:0;background:rgba(255,250,241,.55);padding:42px 48px;border:1px solid var(--line)}",
+    "    h1{font-size:2.35rem;line-height:1.18;margin:0 0 28px} h2{border-top:1px solid var(--line);padding-top:30px;margin-top:42px} h3{margin-top:28px}",
+    "    p,li{word-break:keep-all} blockquote{margin:16px 0;padding:13px 18px;border-left:4px solid var(--accent);background:var(--paper);color:#383838}",
+    "    ul{padding-left:1.35rem} a{color:#9b3f25} hr{border:0;border-top:1px solid var(--line);margin:34px 0}",
+    "    code{background:#eee6da;padding:2px 5px;border-radius:4px} pre{overflow:auto;background:#1f2328;color:#f6f1e8;padding:16px;border-radius:6px}",
+    "    table{width:100%;border-collapse:collapse;margin:18px 0;background:var(--paper)} th,td{border:1px solid var(--line);padding:10px 12px;vertical-align:top} th{background:#efe5d6;text-align:left}",
+    "    .meta{color:var(--muted);font-size:.92rem;margin-bottom:28px}.empty-nav{color:var(--muted);font-size:.9rem}@media(max-width:900px){.shell{display:block;padding:20px}aside{position:static;margin-bottom:18px}main{padding:28px 22px}h1{font-size:1.85rem}}",
     "  </style>",
     "</head>",
     "<body>",
+    "  <div class=\"shell\">",
+    "  <aside>",
+    "    <strong>Report navigation</strong>",
+    report.nav.length ? `    <nav>${report.nav.join("")}</nav>` : '    <div class="empty-nav">No sections found.</div>',
+    "  </aside>",
     "  <main>",
     `    <div class="meta">ReallyGood Research HTML report</div>`,
-    markdownToHtml(markdown),
+    report.body,
     "  </main>",
+    "  </div>",
     "</body>",
     "</html>",
     "",
@@ -812,8 +913,12 @@ function markdownToHtml(markdown) {
   const body = String(markdown || "").replace(/^---\n[\s\S]*?\n---\n*/, "");
   const lines = body.split(/\r?\n/);
   const html = [];
+  const nav = [];
+  const seenIds = new Map();
   let paragraph = [];
   let inList = false;
+  let inCode = false;
+  let code = [];
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
@@ -826,8 +931,25 @@ function markdownToHtml(markdown) {
     inList = false;
   };
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     const trimmed = line.trim();
+    if (trimmed.startsWith("```")) {
+      flushParagraph();
+      closeList();
+      if (inCode) {
+        html.push(`    <pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+        code = [];
+        inCode = false;
+      } else {
+        inCode = true;
+      }
+      continue;
+    }
+    if (inCode) {
+      code.push(line);
+      continue;
+    }
     if (!trimmed) {
       flushParagraph();
       closeList();
@@ -844,7 +966,17 @@ function markdownToHtml(markdown) {
       flushParagraph();
       closeList();
       const level = heading[1].length;
-      html.push(`    <h${level}>${renderInline(heading[2])}</h${level}>`);
+      const id = uniqueHeadingId(heading[2], seenIds, nav.length);
+      if (level <= 3) nav.push(`<a href="#${id}">${escapeHtml(heading[2])}</a>`);
+      html.push(`    <h${level} id="${id}">${renderInline(heading[2])}</h${level}>`);
+      continue;
+    }
+    if (isTableStart(lines, index)) {
+      flushParagraph();
+      closeList();
+      const table = collectTable(lines, index);
+      html.push(renderTable(table.rows));
+      index = table.end;
       continue;
     }
     const quote = trimmed.match(/^>\s?(.*)$/);
@@ -869,13 +1001,58 @@ function markdownToHtml(markdown) {
 
   flushParagraph();
   closeList();
-  return html.join("\n");
+  return { body: html.join("\n"), nav };
 }
 
 function renderInline(value) {
   return escapeHtml(String(value || ""))
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+}
+
+function isTableStart(lines, index) {
+  return /^\s*\|.+\|\s*$/.test(lines[index] || "") && /^\s*\|?[\s:-]+\|[\s|:-]*\s*$/.test(lines[index + 1] || "");
+}
+
+function collectTable(lines, start) {
+  const rows = [splitTableRow(lines[start])];
+  let index = start + 2;
+  while (/^\s*\|.+\|\s*$/.test(lines[index] || "")) {
+    rows.push(splitTableRow(lines[index]));
+    index += 1;
+  }
+  return { rows, end: index - 1 };
+}
+
+function splitTableRow(line) {
+  return line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+}
+
+function renderTable(rows) {
+  const [head, ...body] = rows;
+  return [
+    "    <table>",
+    `      <thead><tr>${head.map((cell) => `<th>${renderInline(cell)}</th>`).join("")}</tr></thead>`,
+    `      <tbody>${body.map((row) => `<tr>${row.map((cell) => `<td>${renderInline(cell)}</td>`).join("")}</tr>`).join("")}</tbody>`,
+    "    </table>",
+  ].join("\n");
+}
+
+function headingId(value, index) {
+  const id = String(value || "")
+    .toLowerCase()
+    .replace(/<[^>]+>/g, "")
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+  return id || `section-${index + 1}`;
+}
+
+function uniqueHeadingId(value, seenIds, index) {
+  const base = headingId(value, index);
+  const count = seenIds.get(base) || 0;
+  seenIds.set(base, count + 1);
+  return count ? `${base}-${count + 1}` : base;
 }
 
 function yamlString(value) {

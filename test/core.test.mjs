@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadEnvFile, runResearchPublish, saveTavilyApiKey, tavilyExtract, tavilySearch } from "../src/index.mjs";
+import { loadEnvFile, runResearchPublish, saveTavilyApiKey, tavilyExtract, tavilyResearch, tavilySearch } from "../src/index.mjs";
 
 test("mock providers save markdown, html, and history metadata", async () => {
   const dir = await mkdtemp(join(tmpdir(), "drp-core-"));
@@ -32,7 +32,7 @@ test("mock providers save markdown, html, and history metadata", async () => {
   assert.match(markdown, /## notebooklm Results/);
   const html = await readFile(result.htmlPath, "utf8");
   assert.match(html, /<main>/);
-  assert.match(html, /<h1>Agentic AI vertical market<\/h1>/);
+  assert.match(html, /<h1 id="agentic-ai-vertical-market">Agentic AI vertical market<\/h1>/);
   assert.doesNotMatch(html, /<pre>/);
   assert.doesNotMatch(html, /type: &quot;research-note&quot;/);
 
@@ -116,6 +116,53 @@ test("tavily keyless overrides a stale env key when explicitly selected", async 
     await tavilySearch({ query: "keyless wins", tavilyKeyless: true });
     assert.equal(headers["X-Tavily-Access-Mode"], "keyless");
     assert.equal(headers.Authorization, undefined);
+  } finally {
+    globalThis.fetch = oldFetch;
+    if (oldKey === undefined) delete process.env.TAVILY_API_KEY;
+    else process.env.TAVILY_API_KEY = oldKey;
+  }
+});
+
+test("tavily provider uses Research API when an API key is configured", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "drp-tavily-research-"));
+  const oldFetch = globalThis.fetch;
+  const oldKey = process.env.TAVILY_API_KEY;
+  const calls = [];
+  process.env.TAVILY_API_KEY = "tvly-test-key";
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).endsWith("/research")) {
+      return { ok: true, json: async () => ({ request_id: "research-1", status: "pending", model: "mini" }) };
+    }
+    if (String(url).endsWith("/research/research-1")) {
+      return {
+        ok: true,
+        json: async () => ({
+          request_id: "research-1",
+          status: "completed",
+          model: "mini",
+          report: "# Research answer\n\nDeeper cited synthesis.",
+          sources: [{ title: "Evidence", url: "https://example.com", content: "supporting source" }],
+        }),
+      };
+    }
+    throw new Error(`unexpected url ${url}`);
+  };
+
+  try {
+    const result = await runResearchPublish({
+      topic: "Research quality",
+      providers: ["tavily"],
+      vaultDir: dir,
+      envFile: join(dir, ".env"),
+      html: true,
+    });
+    const markdown = await readFile(result.markdownPath, "utf8");
+    assert.match(markdown, /Mode: Tavily deep research/);
+    assert.match(markdown, /### Tavily Research Report/);
+    assert.match(markdown, /Deeper cited synthesis/);
+    assert.equal(calls[0].url, "https://api.tavily.com/research");
+    assert.match(calls[1].url, /\/research\/research-1$/);
   } finally {
     globalThis.fetch = oldFetch;
     if (oldKey === undefined) delete process.env.TAVILY_API_KEY;

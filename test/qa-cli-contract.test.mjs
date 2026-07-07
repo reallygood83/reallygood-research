@@ -68,7 +68,7 @@ test("C001 mock NotebookLM+Tavily run writes Markdown and HTML", async () => {
   assert.match(markdown, /## notebooklm Results/i);
   assert.match(markdown, /## tavily Results/i);
   const html = await readFile(htmlPath, "utf8");
-  assert.match(html, /<h1>Agentic AI vertical market<\/h1>/);
+  assert.match(html, /<h1 id="agentic-ai-vertical-market">Agentic AI vertical market<\/h1>/);
   assert.doesNotMatch(html, /<pre>/);
 });
 
