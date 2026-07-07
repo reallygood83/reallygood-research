@@ -2,6 +2,7 @@
   "name": "reallygood-research",
   "version": "0.1.22",
   "description": "Obsidian and CLI deep-research publisher for NotebookLM MCP and Tavily.",
+  "license": "MIT",
   "bin": {
     "reallygood-research": "./bin/deep-research.mjs",
     "deep-research": "./bin/deep-research.mjs"
