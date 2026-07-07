@@ -1,0 +1,62 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+
+import { runResearchPublish } from "../src/index.mjs";
+
+test("mock providers save markdown, html, and history metadata", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "drp-core-"));
+  const sourceFile = join(dir, "source.md");
+  await import("node:fs/promises").then(({ writeFile }) =>
+    writeFile(sourceFile, "# Source\n\nNotes from seed material.\n", "utf8"),
+  );
+
+  const result = await runResearchPublish({
+    topic: "Agentic AI vertical market",
+    providers: ["notebooklm", "tavily"],
+    agent: "codex",
+    sourceFile,
+    vaultDir: join(dir, "vault"),
+    html: true,
+    mock: true,
+  });
+
+  assert.equal(result.providers.length, 2);
+  assert.equal(result.providers[0].name, "notebooklm");
+  assert.equal(result.providers[0].mode, "mock");
+  assert.match(await readFile(result.markdownPath, "utf8"), /provider: notebooklm/);
+  assert.match(await readFile(result.htmlPath, "utf8"), /Agentic AI vertical market/);
+
+  const history = JSON.parse(await readFile(result.historyPath, "utf8"));
+  assert.equal(history.topic, "Agentic AI vertical market");
+  assert.deepEqual(history.providers.map((provider) => provider.name), ["notebooklm", "tavily"]);
+  assert.equal(history.outputs.markdownPath, result.markdownPath);
+  assert.equal(history.outputs.htmlPath, result.htmlPath);
+});
+
+test("unknown providers are rejected instead of silently falling back", async () => {
+  await assert.rejects(
+    () =>
+      runResearchPublish({
+        topic: "No fallback",
+        providers: ["not-a-provider"],
+        vaultDir: tmpdir(),
+        mock: true,
+      }),
+    /Unsupported provider: not-a-provider/,
+  );
+});
+
+test("tavily keyless is explicit opt-in", async () => {
+  await assert.rejects(
+    () =>
+      runResearchPublish({
+        topic: "No accidental credits",
+        providers: ["tavily"],
+        vaultDir: tmpdir(),
+      }),
+    /TAVILY_API_KEY or --tavily-keyless/,
+  );
+});

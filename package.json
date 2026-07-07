@@ -1,0 +1,15 @@
+{
+  "name": "reallygood-research",
+  "version": "0.1.0",
+  "description": "Obsidian and CLI deep-research publisher for NotebookLM, Tavily, and local research lanes.",
+  "bin": {
+    "reallygood-research": "./bin/deep-research.mjs",
+    "deep-research": "./bin/deep-research.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
