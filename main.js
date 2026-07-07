@@ -1135,12 +1135,19 @@ function renderHtml(request, markdown) {
 
 function renderTavilyContent(payload, results) {
   const lines = [];
-  if (payload.answer) lines.push(payload.answer, "");
+  if (payload.answer) lines.push("### Tavily Answer", "", truncateText(payload.answer, 800), "");
+  if (results.length) lines.push("### Web Sources", "");
   for (const result of results) {
-    lines.push(`- [${result.title || result.url}](${result.url})`);
-    if (result.content) lines.push(`  ${String(result.content).replace(/\s+/g, " ").trim()}`);
+    lines.push(`- [${truncateText(result.title || result.url, 120)}](${result.url})`);
+    const snippet = truncateText(result.content || result.raw_content || "", 360);
+    if (snippet) lines.push(`  - ${snippet}`);
   }
   return lines.join("\n").trim() || "No Tavily results returned.";
+}
+
+function truncateText(value, maxLength) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3).trim()}...` : text;
 }
 
 function mockProviderContent(name, topic) {
