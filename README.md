@@ -11,6 +11,15 @@ Obsidian/CLI deep-research publisher for NotebookLM MCP and Tavily.
 
 The plugin is desktop-only because it writes files directly into your local vault.
 
+### Obsidian ribbon buttons
+
+When the plugin is enabled, it automatically adds two ribbon buttons:
+
+- `ReallyGood Research`: opens the deep research console.
+- `Open ReallyGood HTML report`: opens the HTML report matching the active generated Markdown note, or opens the active HTML report directly.
+
+After updating through BRAT, toggle the plugin off and on or reload Obsidian if the new ribbon button does not appear immediately.
+
 ## Quick start
 
 ### Tavily only
