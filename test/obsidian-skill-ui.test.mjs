@@ -173,6 +173,158 @@ test("Obsidian plugin opens matching HTML for the active Markdown report", async
   assert.equal(openedPath, htmlPath);
 });
 
+test("Obsidian research modal exposes Tavily API key save action", async () => {
+  const module = { exports: {} };
+  const seen = { names: [], buttons: [], controls: {}, disabled: [], notices: [], passwordInputs: 0 };
+  class FakeElement {
+    empty() {}
+    addClass() {}
+    createDiv() {
+      return new FakeElement();
+    }
+    createEl() {
+      return new FakeElement();
+    }
+    setText() {}
+  }
+  class Plugin {
+    async loadData() {
+      return {};
+    }
+    async saveData(data) {
+      this.savedData = data;
+    }
+    addRibbonIcon(_icon, title, callback) {
+      if (title === "ReallyGood Research") this.ribbonCallback = callback;
+    }
+    addCommand() {}
+    addSettingTab() {}
+  }
+  class Modal {
+    constructor() {
+      this.contentEl = new FakeElement();
+    }
+    open() {
+      this.onOpen();
+    }
+  }
+  class PluginSettingTab {}
+  class Setting {
+    setName(name) {
+      this.name = name;
+      seen.names.push(name);
+      return this;
+    }
+    setDesc() {
+      return this;
+    }
+    addTextArea(callback) {
+      callback(textControl(this.name));
+      return this;
+    }
+    addText(callback) {
+      callback(textControl(this.name));
+      return this;
+    }
+    addToggle(callback) {
+      callback({ setValue: () => ({ onChange: () => {} }) });
+      return this;
+    }
+    addDropdown(callback) {
+      callback({
+        addOption() {
+          return this;
+        },
+        setValue() {
+          return this;
+        },
+        onChange() {
+          return this;
+        },
+      });
+      return this;
+    }
+    addButton(callback) {
+      const settingName = this.name;
+      callback({
+        setButtonText(label) {
+          seen.buttons.push(label);
+          this.label = label;
+          return this;
+        },
+        setDisabled(value) {
+          seen.disabled.push({ label: this.label || settingName, value });
+          return this;
+        },
+        setCta() {
+          return this;
+        },
+        onClick(handler) {
+          seen.controls[this.label || settingName] = { ...(seen.controls[this.label || settingName] || {}), click: handler };
+          return this;
+        },
+      });
+      return this;
+    }
+  }
+  const textControl = (name) => ({
+    inputEl: {
+      setAttribute(name, value) {
+        if (name === "type" && value === "password") seen.passwordInputs += 1;
+      },
+    },
+    setPlaceholder() {
+      return this;
+    },
+    setValue(value) {
+      this.value = value;
+      return this;
+    },
+    onChange(handler) {
+      this.change = handler;
+      seen.controls[name] = this;
+      return this;
+    },
+  });
+  const Notice = function Notice(message) {
+    seen.notices.push(message);
+    return message;
+  };
+  const requireStub = (id) => {
+    if (id === "obsidian") return { Modal, Notice, Plugin, PluginSettingTab, Setting };
+    return require(id);
+  };
+  const source = await read("main.js");
+  Function("require", "module", "exports", source)(requireStub, module, module.exports);
+
+  const PluginClass = module.exports;
+  const plugin = new PluginClass();
+  plugin.app = { vault: { adapter: { getBasePath: () => "/tmp" } } };
+  plugin.manifest = { id: "reallygood-research", dir: ".obsidian/plugins/reallygood-research" };
+  await plugin.onload();
+  plugin.saveTavilyApiKey = async (apiKey) => {
+    seen.savedApiKey = apiKey;
+    return { envFile: "/tmp/.reallygood-research.env" };
+  };
+  plugin.testTavilyApiKey = async (apiKey) => {
+    seen.testedApiKey = apiKey;
+    return { ok: true };
+  };
+  plugin.ribbonCallback();
+  seen.controls["Tavily API key"].change("tvly-test-key");
+  await seen.controls["Save key"].click();
+
+  assert.ok(seen.names.includes("Tavily API key"));
+  assert.ok(seen.buttons.includes("Save key"));
+  assert.equal(seen.passwordInputs, 1);
+  assert.equal(seen.savedApiKey, "tvly-test-key");
+  assert.equal(seen.testedApiKey, "tvly-test-key");
+  assert.equal(seen.controls["Tavily API key"].value, "");
+  assert.deepEqual(seen.disabled.filter((entry) => entry.label === "Save key").map((entry) => entry.value), [true, false]);
+  assert.match(seen.notices.at(-1), /Saved Tavily API key.*and verified/);
+  assert.doesNotMatch(JSON.stringify(plugin.savedData || {}), /tvly-test-key/);
+});
+
 test("Obsidian main.js runs after BRAT installs only manifest, main, and styles", async () => {
   const module = { exports: {} };
   const vaultDir = await mkdtemp(join(tmpdir(), "brat-plugin-"));

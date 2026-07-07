@@ -215,6 +215,8 @@ class ResearchModal extends Modal {
     const header = contentEl.createDiv({ cls: "reallygood-research-header" });
     header.createEl("h2", { text: "ReallyGood Research" });
     header.createEl("p", { text: "Deep research to Markdown and HTML inside this vault." });
+    let tavilyApiKey = "";
+    let tavilyApiKeyInput = null;
 
     const topicSection = createSection(contentEl, "Research");
     new Setting(topicSection)
@@ -239,6 +241,42 @@ class ResearchModal extends Modal {
           }),
         );
     }
+
+    const tavilySection = createSection(contentEl, "Tavily Research");
+    new Setting(tavilySection)
+      .setName("Tavily API key")
+      .setDesc("Required for Tavily Research. Saved to ~/.reallygood-research.env, not to Obsidian settings.")
+      .addText((text) => {
+        tavilyApiKeyInput = text;
+        text
+          .setPlaceholder("tvly-...")
+          .onChange((value) => {
+            tavilyApiKey = value.trim();
+          });
+        text.inputEl.setAttribute("type", "password");
+      })
+      .addButton((button) =>
+        button.setButtonText("Save key").onClick(async () => {
+          button.setDisabled(true);
+          try {
+            const result = await this.plugin.saveTavilyApiKey(tavilyApiKey);
+            let suffix = "";
+            try {
+              await this.plugin.testTavilyApiKey(tavilyApiKey);
+              suffix = " and verified";
+            } catch (error) {
+              suffix = `. Saved locally, but test failed: ${error instanceof Error ? error.message : String(error)}`;
+            }
+            tavilyApiKey = "";
+            tavilyApiKeyInput?.setValue("");
+            new Notice(`Saved Tavily API key to ${result.envFile}${suffix}`);
+          } catch (error) {
+            new Notice(error instanceof Error ? error.message : String(error));
+          } finally {
+            button.setDisabled(false);
+          }
+        }),
+      );
 
     const outputSection = createSection(contentEl, "Output");
     new Setting(outputSection)
@@ -431,6 +469,7 @@ class ResearchSettingTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.createEl("h2", { text: "ReallyGood Research" });
     let tavilyApiKey = "";
+    let tavilyApiKeyInput = null;
 
     new Setting(containerEl)
       .setName("Providers")
@@ -514,6 +553,7 @@ class ResearchSettingTab extends PluginSettingTab {
       .setName("Tavily API key")
       .setDesc("Required for Tavily Research. Saved to ~/.reallygood-research.env, not to Obsidian settings.")
       .addText((text) => {
+        tavilyApiKeyInput = text;
         text
           .setPlaceholder("tvly-...")
           .onChange((value) => {
@@ -533,6 +573,7 @@ class ResearchSettingTab extends PluginSettingTab {
               suffix = `. Saved locally, but test failed: ${error instanceof Error ? error.message : String(error)}`;
             }
             tavilyApiKey = "";
+            tavilyApiKeyInput?.setValue("");
             new Notice(`Saved Tavily API key to ${result.envFile}${suffix}`);
           } catch (error) {
             new Notice(error instanceof Error ? error.message : String(error));

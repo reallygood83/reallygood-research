@@ -38,7 +38,7 @@ The plugin writes:
 - an optional HTML report
 - JSON history under `.deep-research-publisher/`
 
-The key is saved to `~/.reallygood-research.env`, not to Obsidian settings. Tavily reports use the Tavily Research API; keyless Search output is not used for research notes.
+The key can be saved from the research console or from plugin settings. It is written to `~/.reallygood-research.env`, not to Obsidian settings. Tavily reports use the Tavily Research API; keyless Search output is not used for research notes.
 
 ### NotebookLM
 
