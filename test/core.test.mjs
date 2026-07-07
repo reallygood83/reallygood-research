@@ -111,6 +111,29 @@ test("html report navigation uses matching ascii anchors", () => {
   assert.match(html, /<h2 id="section-3">신뢰 형성을 가로막는 지표<\/h2>/);
 });
 
+test("html report renders inline markdown formatting", () => {
+  const html = renderHtml(
+    { topic: "인라인 테스트" },
+    [
+      "# Inline",
+      "",
+      "문장 안의 **굵게**와 *기울임*, ***굵은 기울임***, ~~취소선~~, `code`.",
+      "",
+      "- **클라우드**가 **59.3%**를 차지한다.",
+      "",
+      "[출처](https://example.com/report)",
+    ].join("\n"),
+  );
+
+  assert.match(html, /<strong>굵게<\/strong>/);
+  assert.match(html, /<em>기울임<\/em>/);
+  assert.match(html, /<strong><em>굵은 기울임<\/em><\/strong>/);
+  assert.match(html, /<del>취소선<\/del>/);
+  assert.match(html, /<code>code<\/code>/);
+  assert.match(html, /<strong>59\.3%<\/strong>/);
+  assert.match(html, /<a href="https:\/\/example\.com\/report" target="_blank" rel="noreferrer">출처<\/a>/);
+});
+
 test("tavily provider requires an API key for Research API output", async () => {
   const dir = await mkdtemp(join(tmpdir(), "drp-no-env-"));
   const oldKey = process.env.TAVILY_API_KEY;

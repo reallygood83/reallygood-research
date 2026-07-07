@@ -1015,9 +1015,22 @@ function markdownToHtml(markdown) {
 }
 
 function renderInline(value) {
+  const codeSpans = [];
+  const stashCode = (_, code) => {
+    const index = codeSpans.push(`<code>${code}</code>`) - 1;
+    return `\u0000${index}\u0000`;
+  };
   return escapeHtml(String(value || ""))
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    .replace(/`([^`]+)`/g, stashCode)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>")
+    .replace(/___([^_]+)___/g, "<strong><em>$1</em></strong>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/__([^_]+)__/g, "<strong>$1</strong>")
+    .replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+    .replace(/(^|[\s(])_([^_\n]+)_/g, "$1<em>$2</em>")
+    .replace(/~~([^~]+)~~/g, "<del>$1</del>")
+    .replace(/\u0000(\d+)\u0000/g, (_, index) => codeSpans[Number(index)] || "");
 }
 
 function isTableStart(lines, index) {
