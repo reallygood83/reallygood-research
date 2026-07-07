@@ -10,4 +10,16 @@ Call the shared command; keep browser automation and provider routing out of the
 node bin/deep-research.mjs run --topic "<topic>" --providers <providers> --source-file <source-file> --vault-dir <vault-path> --html --mock
 ```
 
-Omit `--mock` only when real provider credentials are ready. Treat stdout and written files from the CLI as the handoff. Claude Code may edit the final Markdown only after the CLI has produced it.
+For MCP-style local use, configure Claude Code to spawn:
+
+```sh
+node /path/to/reallygood-research/bin/deep-research.mjs mcp
+```
+
+If Tavily live search is needed, ask the user for their API key and save it locally with:
+
+```sh
+node bin/deep-research.mjs setup tavily
+```
+
+Omit `--mock` only when real provider credentials are ready. Treat stdout, MCP tool results, and written files from the CLI as the handoff. Claude Code may edit the final Markdown only after the CLI has produced it.

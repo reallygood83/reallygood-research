@@ -32,6 +32,14 @@ Outputs:
 
 Omit `--mock` only when real provider credentials and adapters are configured. Tavily live mode uses `TAVILY_API_KEY`, or `--tavily-keyless` for Tavily's keyless access mode.
 
+To save a Tavily API key locally:
+
+```sh
+node bin/deep-research.mjs setup tavily
+```
+
+The key is saved to `~/.reallygood-research.env` with file mode `600`. You can override the path with `--env-path`.
+
 For a lightweight Tavily trial without a key:
 
 ```sh
@@ -41,4 +49,30 @@ node bin/deep-research.mjs run \
   --vault-dir "/path/to/Obsidian/Vault/Research" \
   --html \
   --tavily-keyless
+```
+
+## MCP
+
+The same package can run as a local stdio MCP server:
+
+```sh
+node /path/to/reallygood-research/bin/deep-research.mjs mcp
+```
+
+It exposes:
+
+- `run_research`
+- `setup_tavily`
+
+Example MCP server config shape:
+
+```json
+{
+  "mcpServers": {
+    "reallygood-research": {
+      "command": "node",
+      "args": ["/path/to/reallygood-research/bin/deep-research.mjs", "mcp"]
+    }
+  }
+}
 ```

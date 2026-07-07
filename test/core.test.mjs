@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { runResearchPublish } from "../src/index.mjs";
+import { loadEnvFile, runResearchPublish, saveTavilyApiKey } from "../src/index.mjs";
 
 test("mock providers save markdown, html, and history metadata", async () => {
   const dir = await mkdtemp(join(tmpdir(), "drp-core-"));
@@ -59,4 +59,17 @@ test("tavily keyless is explicit opt-in", async () => {
       }),
     /TAVILY_API_KEY or --tavily-keyless/,
   );
+});
+
+test("tavily api key can be saved and loaded from local env file", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "drp-env-"));
+  const envFile = join(dir, ".reallygood-research.env");
+  delete process.env.TAVILY_API_KEY;
+
+  await saveTavilyApiKey("tvly-test-key", envFile);
+  delete process.env.TAVILY_API_KEY;
+  const loaded = await loadEnvFile(envFile);
+
+  assert.equal(loaded.loaded, true);
+  assert.equal(process.env.TAVILY_API_KEY, "tvly-test-key");
 });

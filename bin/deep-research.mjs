@@ -1,24 +1,163 @@
 #!/usr/bin/env node
-import { runResearchPublish } from "../src/index.mjs";
+import { createInterface } from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
+import { defaultEnvFile, runResearchPublish, saveTavilyApiKey } from "../src/index.mjs";
 
 const args = process.argv.slice(2);
 
 try {
   const command = args.shift();
-  if (command !== "run") {
-    throw new Error("Usage: deep-research run --topic <topic> --providers <list> --vault-dir <dir> [--agent <name>] [--source-file <path>] [--html] [--mock] [--tavily-keyless]");
+  if (command === "run") {
+    await runCommand(args);
+  } else if (command === "setup") {
+    await setupCommand(args);
+  } else if (command === "mcp") {
+    await mcpCommand();
+  } else {
+    throw new Error(
+      "Usage: reallygood-research <run|setup|mcp>\n" +
+        "  run --topic <topic> --providers <list> --vault-dir <dir> [--html] [--mock] [--tavily-keyless]\n" +
+        "  setup tavily [--env-path <path>]\n" +
+        "  mcp",
+    );
+  }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}
+
+async function runCommand(tokens) {
+  const result = await runResearchPublish(parseArgs(tokens));
+  printResult(result);
+}
+
+async function setupCommand(tokens) {
+  const target = tokens.shift();
+  if (target !== "tavily") {
+    throw new Error("Usage: reallygood-research setup tavily [--env-path <path>]");
   }
 
-  const options = parseArgs(args);
-  const result = await runResearchPublish(options);
+  const options = parseArgs(tokens);
+  const envFile = options.envPath || defaultEnvFile();
+  const rl = createInterface({ input, output });
+  const apiKey = await rl.question("Tavily API key: ");
+  rl.close();
+
+  const result = await saveTavilyApiKey(apiKey, envFile);
+  console.log(`Saved Tavily API key to ${result.envFile}`);
+}
+
+async function mcpCommand() {
+  process.stdin.setEncoding("utf8");
+  let buffer = "";
+
+  for await (const chunk of process.stdin) {
+    buffer += chunk;
+    let newline = buffer.indexOf("\n");
+    while (newline !== -1) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) await handleJsonRpc(line);
+      newline = buffer.indexOf("\n");
+    }
+  }
+}
+
+async function handleJsonRpc(line) {
+  let message;
+  try {
+    message = JSON.parse(line);
+  } catch {
+    return;
+  }
+
+  if (!("id" in message)) return;
+
+  try {
+    if (message.method === "initialize") {
+      send(message.id, {
+        protocolVersion: message.params?.protocolVersion || "2025-06-18",
+        capabilities: { tools: {} },
+        serverInfo: { name: "reallygood-research", version: "0.1.0" },
+      });
+    } else if (message.method === "tools/list") {
+      send(message.id, { tools: tools() });
+    } else if (message.method === "tools/call") {
+      send(message.id, await callTool(message.params));
+    } else if (message.method === "ping") {
+      send(message.id, {});
+    } else {
+      sendError(message.id, -32601, `Unknown method: ${message.method}`);
+    }
+  } catch (error) {
+    sendError(message.id, -32000, error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function callTool(params = {}) {
+  const name = params.name;
+  const args = params.arguments || {};
+  if (name === "run_research") {
+    const result = await runResearchPublish(args);
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  }
+  if (name === "setup_tavily") {
+    const result = await saveTavilyApiKey(args.apiKey, args.envFile || defaultEnvFile());
+    return { content: [{ type: "text", text: `Saved Tavily API key to ${result.envFile}` }] };
+  }
+  throw new Error(`Unknown tool: ${name}`);
+}
+
+function tools() {
+  return [
+    {
+      name: "run_research",
+      description: "Run NotebookLM/Tavily/Odysseus-style deep research and save Markdown plus optional HTML.",
+      inputSchema: {
+        type: "object",
+        required: ["topic", "providers", "vaultDir"],
+        properties: {
+          topic: { type: "string" },
+          providers: { type: "string", description: "Comma-separated providers: notebooklm,tavily,odysseus" },
+          vaultDir: { type: "string" },
+          sourceFile: { type: "string" },
+          agent: { type: "string" },
+          html: { type: "boolean" },
+          mock: { type: "boolean" },
+          tavilyKeyless: { type: "boolean" },
+          envFile: { type: "string" },
+        },
+      },
+    },
+    {
+      name: "setup_tavily",
+      description: "Save a Tavily API key into the local ReallyGood Research env file.",
+      inputSchema: {
+        type: "object",
+        required: ["apiKey"],
+        properties: {
+          apiKey: { type: "string" },
+          envFile: { type: "string" },
+        },
+      },
+    },
+  ];
+}
+
+function send(id, result) {
+  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
+}
+
+function sendError(id, code, message) {
+  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } })}\n`);
+}
+
+function printResult(result) {
   console.log(`Markdown: ${result.markdownPath}`);
   if (result.htmlPath) {
     console.log(`HTML: ${result.htmlPath}`);
   }
   console.log(`History: ${result.historyPath}`);
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
 }
 
 function parseArgs(tokens) {

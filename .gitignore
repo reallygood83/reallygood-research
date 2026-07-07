@@ -1,0 +1,4 @@
+.reallygood-research.env
+.env
+.env.*
+!.env.example

@@ -1,11 +1,11 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 
 const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily", "odysseus"]);
 
 export const requestSchema = {
   required: ["topic", "providers", "vaultDir"],
-  optional: ["agent", "sourceFile", "html", "mock", "tavilyKeyless"],
+  optional: ["agent", "sourceFile", "html", "mock", "tavilyKeyless", "envFile"],
   providers: [...SUPPORTED_PROVIDERS],
 };
 
@@ -40,11 +40,13 @@ export function validateResearchRequest(input) {
     html: Boolean(input.html),
     mock: Boolean(input.mock),
     tavilyKeyless: Boolean(input.tavilyKeyless),
+    envFile: stringValue(input.envFile) || defaultEnvFile(),
   };
 }
 
 export async function runResearchPublish(input) {
   const request = validateResearchRequest(input);
+  await loadEnvFile(request.envFile);
   const source = await readSource(request.sourceFile);
   const providerResults = await Promise.all(
     request.providers.map((provider) => runProvider(provider, request, source)),
@@ -87,6 +89,58 @@ export async function runResearchPublish(input) {
     historyPath,
     providers: history.providers,
   };
+}
+
+export function defaultEnvFile() {
+  return join(process.env.HOME || process.cwd(), ".reallygood-research.env");
+}
+
+export async function loadEnvFile(envFile = defaultEnvFile()) {
+  let body = "";
+  try {
+    body = await readFile(envFile, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return { envFile, loaded: false };
+    throw error;
+  }
+
+  for (const line of body.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const index = trimmed.indexOf("=");
+    if (index === -1) continue;
+    const key = trimmed.slice(0, index).trim();
+    const value = unquoteEnv(trimmed.slice(index + 1).trim());
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+  return { envFile, loaded: true };
+}
+
+export async function saveTavilyApiKey(apiKey, envFile = defaultEnvFile()) {
+  const key = stringValue(apiKey);
+  if (!key) {
+    throw new Error("Missing Tavily API key");
+  }
+
+  let existing = "";
+  try {
+    existing = await readFile(envFile, "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+
+  const lines = existing
+    .split(/\r?\n/)
+    .filter((line) => line.trim() && !line.startsWith("TAVILY_API_KEY="));
+  lines.push(`TAVILY_API_KEY=${quoteEnv(key)}`);
+
+  await mkdir(dirname(envFile), { recursive: true });
+  await writeFile(envFile, `${lines.join("\n")}\n`, "utf8");
+  await chmod(envFile, 0o600);
+  process.env.TAVILY_API_KEY = key;
+  return { envFile };
 }
 
 function normalizeProviders(providers) {
@@ -267,4 +321,15 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function quoteEnv(value) {
+  return `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+function unquoteEnv(value) {
+  if (value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1).replaceAll('\\"', '"').replaceAll("\\\\", "\\");
+  }
+  return value;
 }
