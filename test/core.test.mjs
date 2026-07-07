@@ -30,7 +30,11 @@ test("mock providers save markdown, html, and history metadata", async () => {
   assert.match(markdown, /type: "research-note"/);
   assert.match(markdown, /providers:\n  - "notebooklm"\n  - "tavily"/);
   assert.match(markdown, /## notebooklm Results/);
-  assert.match(await readFile(result.htmlPath, "utf8"), /Agentic AI vertical market/);
+  const html = await readFile(result.htmlPath, "utf8");
+  assert.match(html, /<main>/);
+  assert.match(html, /<h1>Agentic AI vertical market<\/h1>/);
+  assert.doesNotMatch(html, /<pre>/);
+  assert.doesNotMatch(html, /type: &quot;research-note&quot;/);
 
   const history = JSON.parse(await readFile(result.historyPath, "utf8"));
   assert.equal(history.topic, "Agentic AI vertical market");

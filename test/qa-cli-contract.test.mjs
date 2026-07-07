@@ -67,7 +67,9 @@ test("C001 mock NotebookLM+Tavily run writes Markdown and HTML", async () => {
   assert.match(markdown, /providers:\n  - "notebooklm"\n  - "tavily"/i);
   assert.match(markdown, /## notebooklm Results/i);
   assert.match(markdown, /## tavily Results/i);
-  assert.match(await readFile(htmlPath, "utf8"), /Agentic AI vertical market/);
+  const html = await readFile(htmlPath, "utf8");
+  assert.match(html, /<h1>Agentic AI vertical market<\/h1>/);
+  assert.doesNotMatch(html, /<pre>/);
 });
 
 test("C002 missing TAVILY_API_KEY without --mock fails safely and creates no output", async () => {

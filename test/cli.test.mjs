@@ -61,7 +61,9 @@ test("run command prints and creates markdown and html outputs", async () => {
   assert.match(markdown, /tags:\n  - research\n  - reallygood-research/);
   assert.match(markdown, /research_mode: "NotebookLM deep research"/);
   assert.match(markdown, /## tavily Results/);
-  assert.match(await readFile(htmlPath, "utf8"), /Agentic AI vertical market/);
+  const html = await readFile(htmlPath, "utf8");
+  assert.match(html, /<h1>Agentic AI vertical market<\/h1>/);
+  assert.doesNotMatch(html, /<pre>/);
 });
 
 test("run command rejects removed Odysseus provider", async () => {

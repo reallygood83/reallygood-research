@@ -780,20 +780,102 @@ function firstLine(value) {
   return String(value || "").split(/\r?\n/, 1)[0];
 }
 
-function renderHtml(request, markdown) {
+export function renderHtml(request, markdown) {
   return [
     "<!doctype html>",
     '<html lang="en">',
     "<head>",
     '  <meta charset="utf-8">',
+    '  <meta name="viewport" content="width=device-width, initial-scale=1">',
     `  <title>${escapeHtml(request.topic)}</title>`,
+    "  <style>",
+    "    body{margin:0;background:#f7f4ee;color:#1f2328;font:17px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}",
+    "    main{max-width:920px;margin:0 auto;padding:48px 28px 72px}",
+    "    h1{font-size:2.2rem;line-height:1.2;margin:0 0 28px} h2{border-top:1px solid #ded8cc;padding-top:28px;margin-top:36px} h3{margin-top:24px}",
+    "    p,li{word-break:keep-all} blockquote{margin:20px 0;padding:12px 18px;border-left:4px solid #c76542;background:#fffaf1;color:#424242}",
+    "    ul{padding-left:1.4rem} a{color:#9b3f25} hr{border:0;border-top:1px solid #ded8cc;margin:32px 0}",
+    "    code{background:#eee6da;padding:2px 5px;border-radius:4px} .meta{color:#7a7168;font-size:.92rem;margin-bottom:28px}",
+    "  </style>",
     "</head>",
     "<body>",
-    `  <pre>${escapeHtml(markdown)}</pre>`,
+    "  <main>",
+    `    <div class="meta">ReallyGood Research HTML report</div>`,
+    markdownToHtml(markdown),
+    "  </main>",
     "</body>",
     "</html>",
     "",
   ].join("\n");
+}
+
+function markdownToHtml(markdown) {
+  const body = String(markdown || "").replace(/^---\n[\s\S]*?\n---\n*/, "");
+  const lines = body.split(/\r?\n/);
+  const html = [];
+  let paragraph = [];
+  let inList = false;
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    html.push(`    <p>${renderInline(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  };
+  const closeList = () => {
+    if (!inList) return;
+    html.push("    </ul>");
+    inList = false;
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      closeList();
+      continue;
+    }
+    if (/^-{3,}$/.test(trimmed)) {
+      flushParagraph();
+      closeList();
+      html.push("    <hr>");
+      continue;
+    }
+    const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      closeList();
+      const level = heading[1].length;
+      html.push(`    <h${level}>${renderInline(heading[2])}</h${level}>`);
+      continue;
+    }
+    const quote = trimmed.match(/^>\s?(.*)$/);
+    if (quote) {
+      flushParagraph();
+      closeList();
+      html.push(`    <blockquote>${renderInline(quote[1])}</blockquote>`);
+      continue;
+    }
+    const listItem = trimmed.match(/^[-*]\s+(.+)$/);
+    if (listItem) {
+      flushParagraph();
+      if (!inList) {
+        html.push("    <ul>");
+        inList = true;
+      }
+      html.push(`      <li>${renderInline(listItem[1])}</li>`);
+      continue;
+    }
+    paragraph.push(trimmed);
+  }
+
+  flushParagraph();
+  closeList();
+  return html.join("\n");
+}
+
+function renderInline(value) {
+  return escapeHtml(String(value || ""))
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
 }
 
 function yamlString(value) {

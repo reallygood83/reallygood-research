@@ -206,7 +206,9 @@ test("Obsidian main.js runs after BRAT installs only manifest, main, and styles"
   assert.equal(existsSync(result.htmlPath), true);
   assert.equal(existsSync(result.historyPath), true);
   assert.match(await readFile(result.markdownPath, "utf8"), /BRAT standalone smoke/);
-  assert.match(await readFile(result.htmlPath, "utf8"), /BRAT standalone smoke/);
+  const html = await readFile(result.htmlPath, "utf8");
+  assert.match(html, /<h1>BRAT standalone smoke<\/h1>/);
+  assert.doesNotMatch(html, /<pre>/);
 });
 
 test("Obsidian plugin migrates old demo defaults to real Tavily deep research", async () => {
