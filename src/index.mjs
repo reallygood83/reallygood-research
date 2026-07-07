@@ -1,8 +1,15 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 
 const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily"]);
+const AI_CLI_PROVIDERS = {
+  codex: { names: ["codex"], args: "exec -" },
+  claude: { names: ["claude"], args: "-p" },
+  gemini: { names: ["gemini"], args: "-p" },
+  grok: { names: ["grok"], args: '-p "$(cat)"' },
+  antigravity: { names: ["antigravity"], args: "-p" },
+};
 
 export const requestSchema = {
   required: ["topic", "providers", "vaultDir"],
@@ -273,7 +280,7 @@ function createMcpSession(command, timeoutMs) {
 
   function start() {
     return new Promise((resolve, reject) => {
-      child = spawn(command, { shell: true, stdio: ["pipe", "pipe", "pipe"], env: process.env });
+      child = spawn(command, { shell: shellPath(), stdio: ["pipe", "pipe", "pipe"], env: shellEnv() });
       const timer = setTimeout(() => reject(new Error(`NotebookLM MCP did not initialize: ${command}`)), 30000);
 
       child.stdout.on("data", (chunk) => {
@@ -524,7 +531,7 @@ async function runAiSynthesis(request, providerResults, source) {
   ]
     .filter(Boolean)
     .join("\n\n");
-  const command = resolveAiCommand(provider, request.aiCommand);
+  const command = await resolveAiCommand(provider, request.aiCommand);
   const content = await runAiCommand(command, prompt);
 
   return {
@@ -540,34 +547,102 @@ async function runAiSynthesisSafely(request, providerResults, source) {
   } catch (error) {
     return {
       provider: request.aiProvider,
-      command: resolveAiCommand(request.aiProvider, request.aiCommand),
+      command: await resolveAiCommand(request.aiProvider, request.aiCommand),
       error: error instanceof Error ? error.message : String(error),
       content: "",
     };
   }
 }
 
-function resolveAiCommand(provider, aiCommand) {
+async function resolveAiCommand(provider, aiCommand) {
   if (aiCommand) return aiCommand;
-  const commands = {
-    codex: "codex exec -",
-    claude: "claude -p",
-    gemini: "gemini -p",
-    grok: 'grok -p "$(cat)"',
-  };
-  const command = commands[provider];
-  if (!command) {
+  const config = AI_CLI_PROVIDERS[provider];
+  if (!config) {
     throw new Error(`Unsupported AI provider: ${provider}. Set aiCommand for a custom local CLI.`);
   }
-  return command;
+  const executable = await findExecutable(config.names) || config.names[0];
+  return `${quoteShell(executable)} ${config.args}`;
+}
+
+async function findExecutable(names) {
+  const commandNames = Array.isArray(names) ? names : [names];
+  const paths = (await mergePath(process.env.PATH)).split(":").filter(Boolean);
+  for (const entry of paths) {
+    for (const name of commandNames) {
+      const candidate = join(entry, name);
+      try {
+        if ((await stat(candidate)).isFile()) return candidate;
+      } catch {
+      }
+    }
+  }
+  return null;
+}
+
+function shellEnv() {
+  return { ...process.env, PATH: mergePathSync(process.env.PATH) };
+}
+
+function mergePathSync(pathValue) {
+  const home = process.env.HOME || "";
+  return uniquePathEntries([
+    ...String(pathValue || "").split(":"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+    join(home, ".local", "bin"),
+    join(home, ".npm-global", "bin"),
+    join(home, ".bun", "bin"),
+    join(home, ".cargo", "bin"),
+  ]).join(":");
+}
+
+async function mergePath(pathValue) {
+  return uniquePathEntries([
+    ...mergePathSync(pathValue).split(":"),
+    ...(await listNodeVersionBins()),
+  ]).join(":");
+}
+
+async function listNodeVersionBins() {
+  const root = join(process.env.HOME || "", ".nvm", "versions", "node");
+  try {
+    return (await readdir(root)).map((entry) => join(root, entry, "bin"));
+  } catch {
+    return [];
+  }
+}
+
+function uniquePathEntries(entries) {
+  const seen = new Set();
+  const paths = [];
+  for (const entry of entries) {
+    const normalized = String(entry || "").trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    paths.push(normalized);
+  }
+  return paths;
+}
+
+function shellPath() {
+  if (process.platform === "win32") return true;
+  return "/bin/zsh";
+}
+
+function quoteShell(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
 function runAiCommand(command, prompt) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, {
-      shell: true,
+      shell: shellPath(),
       stdio: ["pipe", "pipe", "pipe"],
-      env: process.env,
+      env: shellEnv(),
     });
     let stdout = "";
     let stderr = "";

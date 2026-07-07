@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -254,6 +254,44 @@ test("AI CLI failure is recorded without discarding research outputs", async () 
     assert.match(markdown, /not found|Command failed/i);
     assert.match(await readFile(result.htmlPath, "utf8"), /AI failure should not block Tavily/);
   } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test("built-in AI providers resolve local-bin CLI paths", async () => {
+  const oldFetch = globalThis.fetch;
+  const oldPath = process.env.PATH;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      answer: "Search context",
+      results: [{ title: "Source", url: "https://example.com", content: "Evidence" }],
+      request_id: "local-bin-ai",
+    }),
+  });
+
+  try {
+    const dir = await mkdtemp(join(tmpdir(), "drp-ai-path-"));
+    const binDir = join(dir, "bin");
+    const fakeClaude = join(binDir, "claude");
+    await import("node:fs/promises").then(({ mkdir }) => mkdir(binDir, { recursive: true }));
+    await writeFile(fakeClaude, "#!/bin/sh\ncat >/dev/null\nprintf 'LOCAL CLI OK'\n", "utf8");
+    await chmod(fakeClaude, 0o755);
+    process.env.PATH = binDir;
+
+    const result = await runResearchPublish({
+      topic: "Local CLI path",
+      providers: "tavily",
+      vaultDir: join(dir, "vault"),
+      tavilyKeyless: true,
+      aiProvider: "claude",
+    });
+
+    const markdown = await readFile(result.markdownPath, "utf8");
+    assert.match(markdown, /LOCAL CLI OK/);
+    assert.match(markdown, new RegExp(fakeClaude.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  } finally {
+    process.env.PATH = oldPath;
     globalThis.fetch = oldFetch;
   }
 });

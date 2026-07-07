@@ -138,7 +138,7 @@ function tools() {
           maxResults: { type: "number" },
           chunksPerSource: { type: "number" },
           includeAnswer: { type: "boolean" },
-          aiProvider: { type: "string", enum: ["none", "codex", "claude", "gemini", "grok", "custom"] },
+          aiProvider: { type: "string", enum: ["none", "codex", "claude", "gemini", "grok", "antigravity", "custom"] },
           aiCommand: { type: "string" },
           notebooklmMcpCommand: { type: "string", description: "Command that starts the NotebookLM MCP stdio server." },
           notebooklmMode: { type: "string", enum: ["fast", "deep"] },

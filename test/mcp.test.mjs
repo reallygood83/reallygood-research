@@ -51,6 +51,7 @@ test("mcp server lists tools and runs mock research", async () => {
     ["run_research", "setup_tavily", "tavily_search", "tavily_extract"],
   );
   assert.equal(responses[1].result.tools[0].inputSchema.properties.aiProvider.enum.includes("claude"), true);
+  assert.equal(responses[1].result.tools[0].inputSchema.properties.aiProvider.enum.includes("antigravity"), true);
 
   const payload = JSON.parse(responses[2].result.content[0].text);
   assert.equal(existsSync(payload.markdownPath), true);

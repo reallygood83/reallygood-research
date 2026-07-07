@@ -1,13 +1,21 @@
 const { Modal, Notice, Plugin, PluginSettingTab, Setting } = require("obsidian");
 const { chmod, mkdir, readFile, writeFile } = require("node:fs/promises");
 const { dirname, isAbsolute, join } = require("node:path");
+const { existsSync, readdirSync, statSync } = require("node:fs");
 const { spawn } = require("node:child_process");
 
 const PROVIDER_OPTIONS = [
   ["notebooklm", "NotebookLM MCP"],
   ["tavily", "Tavily"],
 ];
-const SETTINGS_VERSION = 7;
+const SETTINGS_VERSION = 8;
+const AI_CLI_PROVIDERS = {
+  codex: { label: "Codex CLI", names: ["codex"], args: "exec -" },
+  claude: { label: "Claude Code CLI", names: ["claude"], args: "-p" },
+  gemini: { label: "Gemini CLI", names: ["gemini"], args: "-p" },
+  grok: { label: "Grok CLI", names: ["grok"], args: '-p "$(cat)"' },
+  antigravity: { label: "Antigravity CLI", names: ["antigravity"], args: "-p" },
+};
 
 const DEFAULT_SETTINGS = {
   providers: "tavily",
@@ -286,6 +294,7 @@ class ResearchModal extends Modal {
           .addOption("claude", "Claude Code CLI")
           .addOption("gemini", "Gemini CLI")
           .addOption("grok", "Grok CLI")
+          .addOption("antigravity", "Antigravity CLI")
           .addOption("custom", "Custom CLI")
           .setValue(this.plugin.settings.aiProvider || DEFAULT_SETTINGS.aiProvider)
           .onChange(async (value) => {
@@ -509,6 +518,7 @@ class ResearchSettingTab extends PluginSettingTab {
           .addOption("claude", "Claude Code CLI")
           .addOption("gemini", "Gemini CLI")
           .addOption("grok", "Grok CLI")
+          .addOption("antigravity", "Antigravity CLI")
           .addOption("custom", "Custom CLI")
           .setValue(this.plugin.settings.aiProvider || DEFAULT_SETTINGS.aiProvider)
           .onChange(async (value) => {
@@ -561,6 +571,9 @@ function migrateSettings(settings, savedSettings) {
   if ((savedSettings.settingsVersion || 0) < 6) {
     settings.notebooklmMcpCommand = normalizeLocalNotebookLmCommand(settings.notebooklmMcpCommand, "notebooklm-mcp");
     settings.notebooklmLoginCommand = normalizeLocalNotebookLmCommand(settings.notebooklmLoginCommand, "nlm login");
+  }
+  if ((savedSettings.settingsVersion || 0) < 8 && settings.aiProvider === "codex" && !settings.aiCommand) {
+    settings.aiProvider = "none";
   }
   settings.settingsVersion = SETTINGS_VERSION;
   return settings;
@@ -957,15 +970,10 @@ async function runAiSynthesisSafely(request, providerResults) {
 
 function resolveAiCommand(provider, aiCommand) {
   if (aiCommand) return aiCommand;
-  const commands = {
-    codex: "codex exec -",
-    claude: "claude -p",
-    gemini: "gemini -p",
-    grok: 'grok -p "$(cat)"',
-  };
-  const command = commands[provider];
-  if (!command) throw new Error(`Unsupported AI provider: ${provider}. Set AI CLI command for a custom local CLI.`);
-  return command;
+  const config = AI_CLI_PROVIDERS[provider];
+  if (!config) throw new Error(`Unsupported AI provider: ${provider}. Set AI CLI command for a custom local CLI.`);
+  const executable = findExecutable(config.names) || config.names[0];
+  return `${quoteShell(executable)} ${config.args}`;
 }
 
 function runAiCommand(command, prompt) {
@@ -974,7 +982,7 @@ function runAiCommand(command, prompt) {
 
 function runShellCommand(command, stdin = "", timeoutMs = 180000) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, { shell: true, stdio: ["pipe", "pipe", "pipe"], env: shellEnv() });
+    const child = spawn(command, { shell: shellPath(), stdio: ["pipe", "pipe", "pipe"], env: shellEnv() });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
@@ -1002,7 +1010,7 @@ function runShellCommand(command, stdin = "", timeoutMs = 180000) {
 
 function runShellCommandUntil(command, successPattern, timeoutMs = 180000) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, { shell: true, stdio: ["pipe", "pipe", "pipe"], env: shellEnv() });
+    const child = spawn(command, { shell: shellPath(), stdio: ["pipe", "pipe", "pipe"], env: shellEnv() });
     let output = "";
     let settled = false;
     const finish = (error) => {
@@ -1198,8 +1206,71 @@ function numberValue(value, fallback) {
 }
 
 function shellEnv() {
-  const extraPath = ["/opt/homebrew/bin", "/usr/local/bin", `${process.env.HOME || ""}/.local/bin`, `${process.env.HOME || ""}/.cargo/bin`];
-  return { ...process.env, PATH: [...extraPath, process.env.PATH || ""].filter(Boolean).join(":") };
+  return { ...process.env, PATH: mergePath(process.env.PATH) };
+}
+
+function mergePath(pathValue) {
+  const seen = new Set();
+  const paths = [];
+  const add = (entry) => {
+    const normalized = String(entry || "").trim();
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    paths.push(normalized);
+  };
+  for (const entry of String(pathValue || "").split(":")) add(entry);
+  for (const entry of extraPathEntries()) add(entry);
+  return paths.join(":");
+}
+
+function extraPathEntries() {
+  const home = process.env.HOME || "";
+  return [
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+    join(home, ".local", "bin"),
+    join(home, ".npm-global", "bin"),
+    join(home, ".bun", "bin"),
+    join(home, ".cargo", "bin"),
+    ...listNodeVersionBins(),
+  ];
+}
+
+function listNodeVersionBins() {
+  const root = join(process.env.HOME || "", ".nvm", "versions", "node");
+  try {
+    return readdirSync(root).map((entry) => join(root, entry, "bin"));
+  } catch {
+    return [];
+  }
+}
+
+function findExecutable(names) {
+  const commandNames = Array.isArray(names) ? names : [names];
+  const paths = mergePath(process.env.PATH).split(":").filter(Boolean);
+  for (const entry of paths) {
+    for (const name of commandNames) {
+      const candidate = join(entry, name);
+      try {
+        if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+      } catch {
+      }
+    }
+  }
+  return null;
+}
+
+function shellPath() {
+  if (process.platform === "win32") return true;
+  return existsSync("/bin/zsh") ? "/bin/zsh" : true;
+}
+
+function quoteShell(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
 function yamlString(value) {

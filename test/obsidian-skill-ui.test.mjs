@@ -40,6 +40,10 @@ test("Obsidian main.js is BRAT-standalone and registers a runnable research cons
   assert.match(source, /--tavily-keyless/);
   assert.match(source, /AI provider/);
   assert.match(source, /aiCommand/);
+  assert.match(source, /Antigravity CLI/);
+  assert.match(source, /AI_CLI_PROVIDERS/);
+  assert.match(source, /\.nvm/);
+  assert.match(source, /shellPath/);
   assert.match(source, /NotebookLM MCP command/);
   assert.match(source, /NotebookLM login command/);
   assert.match(source, /Login NotebookLM/);
@@ -144,7 +148,48 @@ test("Obsidian plugin migrates old demo defaults to real Tavily deep research", 
   assert.equal(plugin.settings.aiProvider, "none");
   assert.equal(plugin.settings.notebooklmMcpCommand, "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run notebooklm-mcp");
   assert.equal(plugin.settings.notebooklmLoginCommand, "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run nlm login");
-  assert.equal(plugin.savedData.settingsVersion, 7);
+  assert.equal(plugin.savedData.settingsVersion, 8);
+});
+
+test("Obsidian plugin migrates saved Codex synthesis back to none", async () => {
+  const module = { exports: {} };
+  class Plugin {
+    async loadData() {
+      return {
+        providers: "tavily",
+        aiProvider: "codex",
+        aiCommand: "",
+        settingsVersion: 7,
+      };
+    }
+    async saveData(data) {
+      this.savedData = data;
+    }
+    addRibbonIcon() {}
+    addCommand() {}
+    addSettingTab() {}
+  }
+  class Modal {}
+  class PluginSettingTab {}
+  class Setting {}
+  const Notice = function Notice(message) {
+    return message;
+  };
+  const requireStub = (id) => {
+    if (id === "obsidian") return { Modal, Notice, Plugin, PluginSettingTab, Setting };
+    return require(id);
+  };
+  const source = await read("main.js");
+  Function("require", "module", "exports", source)(requireStub, module, module.exports);
+
+  const PluginClass = module.exports;
+  const plugin = new PluginClass();
+  plugin.app = { vault: { adapter: { getBasePath: () => "/tmp" } } };
+  plugin.manifest = { id: "reallygood-research", dir: ".obsidian/plugins/reallygood-research" };
+  await plugin.onload();
+
+  assert.equal(plugin.settings.aiProvider, "none");
+  assert.equal(plugin.savedData.settingsVersion, 8);
 });
 
 test("Obsidian plugin can run the configured NotebookLM login command", async () => {

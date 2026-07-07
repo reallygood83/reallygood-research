@@ -69,6 +69,7 @@ Supported built-in choices:
 - `claude`
 - `gemini`
 - `grok`
+- `antigravity`
 - `custom`
 
 Leave `AI provider` as `None` if no local AI CLI is installed or logged in.
@@ -137,7 +138,7 @@ node bin/deep-research.mjs run \
   --ai-provider claude
 ```
 
-Supported built-in CLI providers are `codex`, `claude`, `gemini`, and `grok`. For any other logged-in CLI, use `--ai-provider custom --ai-command "<command>"`. The research prompt is passed through stdin.
+Supported built-in CLI providers are `codex`, `claude`, `gemini`, `grok`, and `antigravity`. The plugin resolves common Homebrew, local-bin, npm-global, Bun, Cargo, and NVM paths so Obsidian can find CLIs that your terminal can use. For any other logged-in CLI, use `--ai-provider custom --ai-command "<command>"`. The research prompt is passed through stdin.
 
 In the Obsidian plugin, choose `AI provider` from the console or settings. This uses your existing local CLI login/OAuth session; it does not ask for or store AI provider API keys.
 
