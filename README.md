@@ -11,6 +11,23 @@ Obsidian/CLI deep-research publisher for NotebookLM MCP and Tavily.
 
 The plugin is desktop-only because it writes files directly into your local vault.
 
+## Privacy and permissions
+
+ReallyGood Research does not include client-side telemetry or ads.
+
+The plugin uses network requests only when you run a provider that needs them:
+
+- Tavily requests are sent to Tavily's API to create research reports, search, extract, and test usage.
+- NotebookLM requests are handled by your configured local `notebooklm-mcp` command, which uses your own NotebookLM/Google login.
+- Optional AI synthesis calls a local CLI you select, such as Claude Code, Codex, Gemini, Grok, Antigravity, or a custom command.
+
+The plugin accesses files outside your vault only for local configuration and tools:
+
+- Tavily keys are saved to `~/.reallygood-research.env`, not to Obsidian settings.
+- NotebookLM and AI provider commands may run local CLIs installed on your machine.
+
+Tavily requires your own API key. NotebookLM and optional AI synthesis require accounts or local CLI sessions that you manage outside this plugin.
+
 ### Obsidian ribbon buttons
 
 When the plugin is enabled, it automatically adds two ribbon buttons:
