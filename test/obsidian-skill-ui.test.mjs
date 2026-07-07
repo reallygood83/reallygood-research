@@ -108,6 +108,8 @@ test("Obsidian plugin migrates old demo defaults to real Tavily deep research", 
         tavilyKeyless: false,
         aiProvider: "codex",
         aiCommand: "",
+        notebooklmMcpCommand: "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run notebooklm-mcp",
+        notebooklmLoginCommand: "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run nlm login",
       };
     }
     async saveData(data) {
@@ -140,7 +142,9 @@ test("Obsidian plugin migrates old demo defaults to real Tavily deep research", 
   assert.equal(plugin.settings.mock, false);
   assert.equal(plugin.settings.tavilyKeyless, true);
   assert.equal(plugin.settings.aiProvider, "none");
-  assert.equal(plugin.savedData.settingsVersion, 5);
+  assert.equal(plugin.settings.notebooklmMcpCommand, "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run notebooklm-mcp");
+  assert.equal(plugin.settings.notebooklmLoginCommand, "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run nlm login");
+  assert.equal(plugin.savedData.settingsVersion, 6);
 });
 
 test("Obsidian plugin can run the configured NotebookLM login command", async () => {
@@ -179,6 +183,44 @@ test("Obsidian plugin can run the configured NotebookLM login command", async ()
   await plugin.onload();
 
   assert.match(await plugin.runNotebookLmLogin(), /login ok/);
+});
+
+test("Obsidian NotebookLM login resolves when nlm reports success before exit", async () => {
+  const module = { exports: {} };
+  class Plugin {
+    async loadData() {
+      return {
+        notebooklmLoginCommand: `${process.execPath} -e "console.log('Successfully authenticated!'); setInterval(() => {}, 1000)"`,
+        settingsVersion: 6,
+      };
+    }
+    async saveData(data) {
+      this.savedData = data;
+    }
+    addRibbonIcon() {}
+    addCommand() {}
+    addSettingTab() {}
+  }
+  class Modal {}
+  class PluginSettingTab {}
+  class Setting {}
+  const Notice = function Notice(message) {
+    return message;
+  };
+  const requireStub = (id) => {
+    if (id === "obsidian") return { Modal, Notice, Plugin, PluginSettingTab, Setting };
+    return require(id);
+  };
+  const source = await read("main.js");
+  Function("require", "module", "exports", source)(requireStub, module, module.exports);
+
+  const PluginClass = module.exports;
+  const plugin = new PluginClass();
+  plugin.app = { vault: { adapter: { getBasePath: () => "/tmp" } } };
+  plugin.manifest = { id: "reallygood-research", dir: ".obsidian/plugins/reallygood-research" };
+  await plugin.onload();
+
+  assert.match(await plugin.runNotebookLmLogin(), /Successfully authenticated/);
 });
 
 test("agent skill templates call the shared CLI contract", async () => {

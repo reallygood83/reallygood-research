@@ -7,7 +7,7 @@ const PROVIDER_OPTIONS = [
   ["notebooklm", "NotebookLM MCP"],
   ["tavily", "Tavily"],
 ];
-const SETTINGS_VERSION = 5;
+const SETTINGS_VERSION = 6;
 
 const DEFAULT_SETTINGS = {
   providers: "tavily",
@@ -107,7 +107,11 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
   }
 
   async runNotebookLmLogin() {
-    return runShellCommand(this.settings.notebooklmLoginCommand || DEFAULT_SETTINGS.notebooklmLoginCommand, "", 300000);
+    return runShellCommandUntil(
+      this.settings.notebooklmLoginCommand || DEFAULT_SETTINGS.notebooklmLoginCommand,
+      /Successfully authenticated|Authentication valid|Notebooks found/,
+      300000,
+    );
   }
 
   buildCommandPreview(topic) {
@@ -554,8 +558,21 @@ function migrateSettings(settings, savedSettings) {
       }
     }
   }
+  if ((savedSettings.settingsVersion || 0) < 6) {
+    settings.notebooklmMcpCommand = normalizeLocalNotebookLmCommand(settings.notebooklmMcpCommand, "notebooklm-mcp");
+    settings.notebooklmLoginCommand = normalizeLocalNotebookLmCommand(settings.notebooklmLoginCommand, "nlm login");
+  }
   settings.settingsVersion = SETTINGS_VERSION;
   return settings;
+}
+
+function normalizeLocalNotebookLmCommand(command, tool) {
+  const value = stringValue(command);
+  if (!value) return value;
+  return value.replace(
+    "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run ",
+    "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run ",
+  ) || tool;
 }
 
 const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily"]);
@@ -965,6 +982,36 @@ function runShellCommand(command, stdin = "", timeoutMs = 180000) {
       else reject(new Error(`Command failed (${code}): ${stderr || stdout || command}`));
     });
     child.stdin.end(stdin);
+  });
+}
+
+function runShellCommandUntil(command, successPattern, timeoutMs = 180000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, { shell: true, stdio: ["pipe", "pipe", "pipe"], env: shellEnv() });
+    let output = "";
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (!child.killed) child.kill("SIGTERM");
+      if (error) reject(error);
+      else resolve(output);
+    };
+    const timer = setTimeout(() => finish(new Error(`Command timed out: ${command}`)), timeoutMs);
+    const collect = (chunk) => {
+      output += String(chunk);
+      if (successPattern.test(output)) finish();
+    };
+    child.stdout.on("data", collect);
+    child.stderr.on("data", collect);
+    child.on("error", finish);
+    child.on("close", (code) => {
+      if (settled) return;
+      if (code === 0 || successPattern.test(output)) finish();
+      else finish(new Error(`Command failed (${code}): ${output || command}`));
+    });
+    child.stdin.end("");
   });
 }
 
