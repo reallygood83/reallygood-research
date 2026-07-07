@@ -44,6 +44,8 @@ test("Obsidian main.js is BRAT-standalone and registers a runnable research cons
   assert.match(source, /AI_CLI_PROVIDERS/);
   assert.match(source, /\.nvm/);
   assert.match(source, /shellPath/);
+  assert.match(source, /Tavily search \+ AI synthesis/);
+  assert.match(source, /NotebookLM deep research/);
   assert.match(source, /NotebookLM MCP command/);
   assert.match(source, /NotebookLM login command/);
   assert.match(source, /Login NotebookLM/);

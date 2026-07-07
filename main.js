@@ -370,7 +370,7 @@ class ResearchModal extends Modal {
       `Providers: ${this.plugin.settings.providers}`,
       `Folder: ${this.plugin.settings.vaultDir || DEFAULT_SETTINGS.vaultDir}`,
       `HTML: ${this.plugin.settings.html ? "on" : "off"}`,
-      `Mode: ${this.plugin.settings.mock ? "test/mock" : "deep research"}`,
+      `Mode: ${describeRunMode(this.plugin.settings)}`,
       `Tavily: ${this.plugin.settings.tavilyKeyless ? "keyless" : "env/API key"}`,
       `NotebookLM: ${this.plugin.settings.notebooklmMcpCommand || DEFAULT_SETTINGS.notebooklmMcpCommand}`,
       `AI: ${this.plugin.settings.aiProvider || "none"}`,
@@ -577,6 +577,16 @@ function migrateSettings(settings, savedSettings) {
   }
   settings.settingsVersion = SETTINGS_VERSION;
   return settings;
+}
+
+function describeRunMode(settings) {
+  if (settings.mock) return "test/mock";
+  const providers = normalizeProviders(settings.providers || DEFAULT_SETTINGS.providers);
+  if (providers.includes("notebooklm")) return "NotebookLM deep research";
+  if (providers.includes("tavily")) {
+    return settings.aiProvider && settings.aiProvider !== "none" ? "Tavily search + AI synthesis" : "Tavily search";
+  }
+  return "research";
 }
 
 function normalizeLocalNotebookLmCommand(command, tool) {
