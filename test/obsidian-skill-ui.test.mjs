@@ -35,6 +35,8 @@ test("Obsidian main.js registers a runnable research console without provider lo
   assert.match(source, /--html/);
   assert.match(source, /--mock/);
   assert.match(source, /--tavily-keyless/);
+  assert.match(source, /AI provider/);
+  assert.match(source, /aiCommand/);
   assert.doesNotMatch(source, /Notebook-style synthesis|Search-grounded brief|Long-form reasoning brief/);
 });
 

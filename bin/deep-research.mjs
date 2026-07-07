@@ -15,8 +15,8 @@ try {
     await mcpCommand();
   } else {
     throw new Error(
-      "Usage: reallygood-research <run|setup|mcp>\n" +
-        "  run --topic <topic> --providers <list> --vault-dir <dir> [--html] [--mock] [--tavily-keyless]\n" +
+        "Usage: reallygood-research <run|setup|mcp>\n" +
+        "  run --topic <topic> --providers <list> --vault-dir <dir> [--html] [--mock] [--tavily-keyless] [--ai-provider <name>] [--ai-command <command>]\n" +
         "  setup tavily [--env-path <path>]\n" +
         "  mcp",
     );
@@ -138,6 +138,8 @@ function tools() {
           maxResults: { type: "number" },
           chunksPerSource: { type: "number" },
           includeAnswer: { type: "boolean" },
+          aiProvider: { type: "string", enum: ["none", "codex", "claude", "gemini", "grok", "custom"] },
+          aiCommand: { type: "string" },
         },
       },
     },

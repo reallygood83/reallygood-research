@@ -81,3 +81,36 @@ test("tavily extract requires explicit key or keyless mode", async () => {
     /Tavily extract requires TAVILY_API_KEY or tavilyKeyless=true/,
   );
 });
+
+test("custom local AI CLI can synthesize provider results", async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      answer: "Source answer",
+      results: [{ title: "Source", url: "https://example.com", content: "Evidence" }],
+      usage: { credits: 1 },
+      request_id: "test-request",
+    }),
+  });
+
+  try {
+    const dir = await mkdtemp(join(tmpdir(), "drp-ai-"));
+    const command = `${process.execPath} -e "process.stdin.resume();process.stdin.on('end',()=>console.log('AI OK'))"`;
+    const result = await runResearchPublish({
+      topic: "AI synthesis",
+      providers: "tavily",
+      vaultDir: dir,
+      tavilyKeyless: true,
+      aiProvider: "custom",
+      aiCommand: command,
+    });
+
+    const markdown = await readFile(result.markdownPath, "utf8");
+    assert.match(markdown, /## AI Synthesis/);
+    assert.match(markdown, /AI OK/);
+    assert.match(markdown, /provider: custom/);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});

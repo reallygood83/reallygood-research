@@ -1,11 +1,12 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { spawn } from "node:child_process";
 
 const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily", "odysseus"]);
 
 export const requestSchema = {
   required: ["topic", "providers", "vaultDir"],
-  optional: ["agent", "sourceFile", "html", "mock", "tavilyKeyless", "envFile", "searchDepth", "maxResults", "chunksPerSource", "includeAnswer"],
+  optional: ["agent", "sourceFile", "html", "mock", "tavilyKeyless", "envFile", "searchDepth", "maxResults", "chunksPerSource", "includeAnswer", "aiProvider", "aiCommand"],
   providers: [...SUPPORTED_PROVIDERS],
 };
 
@@ -45,6 +46,8 @@ export function validateResearchRequest(input) {
     maxResults: numberValue(input.maxResults, 5),
     chunksPerSource: numberValue(input.chunksPerSource, 3),
     includeAnswer: input.includeAnswer === undefined ? true : Boolean(input.includeAnswer),
+    aiProvider: stringValue(input.aiProvider) || "none",
+    aiCommand: stringValue(input.aiCommand),
   };
 }
 
@@ -55,6 +58,7 @@ export async function runResearchPublish(input) {
   const providerResults = await Promise.all(
     request.providers.map((provider) => runProvider(provider, request, source)),
   );
+  const synthesis = await runAiSynthesis(request, providerResults, source);
 
   const now = new Date();
   const slug = slugify(request.topic);
@@ -62,7 +66,7 @@ export async function runResearchPublish(input) {
   await mkdir(request.vaultDir, { recursive: true });
 
   const markdownPath = join(request.vaultDir, `${stamp}-${slug}.md`);
-  const markdown = renderMarkdown(request, providerResults, source, now);
+  const markdown = renderMarkdown(request, providerResults, source, now, synthesis);
   await writeFile(markdownPath, markdown, "utf8");
 
   let htmlPath = null;
@@ -82,6 +86,7 @@ export async function runResearchPublish(input) {
     sourceName: request.sourceFile ? basename(request.sourceFile) : null,
     createdAt: now.toISOString(),
     providers: providerResults.map(({ name, mode, metadata }) => ({ name, mode, metadata })),
+    synthesis: synthesis ? { provider: synthesis.provider, command: synthesis.command } : null,
     outputs: { markdownPath, htmlPath },
   };
   await writeFile(historyPath, `${JSON.stringify(history, null, 2)}\n`, "utf8");
@@ -124,10 +129,13 @@ export async function loadEnvFile(envFile = defaultEnvFile()) {
 
 export async function saveTavilyApiKey(apiKey, envFile = defaultEnvFile()) {
   const key = stringValue(apiKey);
-  if (!key) {
-    throw new Error("Missing Tavily API key");
-  }
+  if (!key) throw new Error("Missing Tavily API key");
+  await saveEnvValues({ TAVILY_API_KEY: key }, envFile);
+  process.env.TAVILY_API_KEY = key;
+  return { envFile };
+}
 
+async function saveEnvValues(values, envFile) {
   let existing = "";
   try {
     existing = await readFile(envFile, "utf8");
@@ -135,16 +143,20 @@ export async function saveTavilyApiKey(apiKey, envFile = defaultEnvFile()) {
     if (error.code !== "ENOENT") throw error;
   }
 
+  const keys = new Set(Object.keys(values));
   const lines = existing
     .split(/\r?\n/)
-    .filter((line) => line.trim() && !line.startsWith("TAVILY_API_KEY="));
-  lines.push(`TAVILY_API_KEY=${quoteEnv(key)}`);
+    .filter((line) => {
+      const key = line.split("=", 1)[0]?.trim();
+      return line.trim() && !keys.has(key);
+    });
+  for (const [key, value] of Object.entries(values)) {
+    lines.push(`${key}=${quoteEnv(value)}`);
+  }
 
   await mkdir(dirname(envFile), { recursive: true });
   await writeFile(envFile, `${lines.join("\n")}\n`, "utf8");
   await chmod(envFile, 0o600);
-  process.env.TAVILY_API_KEY = key;
-  return { envFile };
 }
 
 function normalizeProviders(providers) {
@@ -283,6 +295,83 @@ export async function tavilyExtract(input) {
   return payload;
 }
 
+async function runAiSynthesis(request, providerResults, source) {
+  if (request.mock || request.aiProvider === "none") return null;
+  const provider = request.aiProvider;
+  if (provider === "none") return null;
+  const context = providerResults
+    .map((result) => `## ${result.name}\nmode: ${result.mode}\nmetadata: ${JSON.stringify(result.metadata)}\n\n${result.content}`)
+    .join("\n\n");
+  const prompt = [
+    "You are writing a concise Korean research report from supplied research context.",
+    "Do not invent facts beyond the supplied context. Preserve source URLs and caveats.",
+    "",
+    `Topic: ${request.topic}`,
+    source ? `User source:\n${source}` : "",
+    "Research provider context:",
+    context,
+    "",
+    "Write sections: 핵심 결론, 근거, 리스크/불확실성, 다음 액션.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const command = resolveAiCommand(provider, request.aiCommand);
+  const content = await runAiCommand(command, prompt);
+
+  return {
+    provider,
+    command,
+    content: content.trim(),
+  };
+}
+
+function resolveAiCommand(provider, aiCommand) {
+  if (aiCommand) return aiCommand;
+  const commands = {
+    codex: "codex exec -",
+    claude: "claude -p",
+    gemini: "gemini -p",
+    grok: "grok -p",
+  };
+  const command = commands[provider];
+  if (!command) {
+    throw new Error(`Unsupported AI provider: ${provider}. Set aiCommand for a custom local CLI.`);
+  }
+  return command;
+}
+
+function runAiCommand(command, prompt) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, {
+      shell: true,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: process.env,
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error(`AI CLI timed out: ${command}`));
+    }, 180000);
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(stdout);
+      else reject(new Error(`AI CLI failed (${code}): ${stderr || stdout || command}`));
+    });
+    child.stdin.end(prompt);
+  });
+}
+
 function renderTavilyContent(payload, results) {
   const lines = [];
   if (payload.answer) {
@@ -309,7 +398,7 @@ function mockProviderContent(name, topic, source) {
   return `${labels[name]} for ${topic}. ${sourceLine}`;
 }
 
-function renderMarkdown(request, providerResults, source, now) {
+function renderMarkdown(request, providerResults, source, now, synthesis) {
   const lines = [
     "---",
     `topic: ${yamlString(request.topic)}`,
@@ -328,6 +417,10 @@ function renderMarkdown(request, providerResults, source, now) {
 
   if (source) {
     lines.push("## Source", "", source.trim(), "");
+  }
+
+  if (synthesis?.content) {
+    lines.push("## AI Synthesis", "", `provider: ${synthesis.provider}`, `command: ${synthesis.command}`, "", synthesis.content, "");
   }
 
   for (const provider of providerResults) {

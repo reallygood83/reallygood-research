@@ -8,6 +8,8 @@ const DEFAULT_SETTINGS = {
   html: true,
   mock: true,
   tavilyKeyless: false,
+  aiProvider: "none",
+  aiCommand: "",
 };
 
 module.exports = class ReallyGoodResearchPlugin extends Plugin {
@@ -63,6 +65,8 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
       html: this.settings.html,
       mock: this.settings.mock,
       tavilyKeyless: this.settings.tavilyKeyless,
+      aiProvider: this.settings.aiProvider || DEFAULT_SETTINGS.aiProvider,
+      aiCommand: this.settings.aiCommand || DEFAULT_SETTINGS.aiCommand,
     };
   }
 
@@ -89,6 +93,10 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
     if (this.settings.html) args.push("--html");
     if (this.settings.mock) args.push("--mock");
     if (this.settings.tavilyKeyless) args.push("--tavily-keyless");
+    if (this.settings.aiProvider && this.settings.aiProvider !== "none") {
+      args.push("--ai-provider", this.settings.aiProvider);
+      if (this.settings.aiCommand) args.push("--ai-command", quote(this.settings.aiCommand));
+    }
     return args.join(" ");
   }
 
@@ -167,6 +175,23 @@ class ResearchModal extends Modal {
           this.plugin.settings.tavilyKeyless = value;
           await this.plugin.saveSettings();
         }),
+      );
+
+    new Setting(contentEl)
+      .setName("AI provider")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("none", "None")
+          .addOption("codex", "Codex CLI")
+          .addOption("claude", "Claude Code CLI")
+          .addOption("gemini", "Gemini CLI")
+          .addOption("grok", "Grok CLI")
+          .addOption("custom", "Custom CLI")
+          .setValue(this.plugin.settings.aiProvider || DEFAULT_SETTINGS.aiProvider)
+          .onChange(async (value) => {
+            this.plugin.settings.aiProvider = value;
+            await this.plugin.saveSettings();
+          }),
       );
 
     const logEl = contentEl.createEl("pre", { cls: "reallygood-research-log" });
@@ -273,6 +298,37 @@ class ResearchSettingTab extends PluginSettingTab {
             new Notice(error instanceof Error ? error.message : String(error));
           }
         }),
+      );
+
+    new Setting(containerEl)
+      .setName("AI provider")
+      .setDesc("Uses an already logged-in local CLI/OAuth session, not an API key.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("none", "None")
+          .addOption("codex", "Codex CLI")
+          .addOption("claude", "Claude Code CLI")
+          .addOption("gemini", "Gemini CLI")
+          .addOption("grok", "Grok CLI")
+          .addOption("custom", "Custom CLI")
+          .setValue(this.plugin.settings.aiProvider || DEFAULT_SETTINGS.aiProvider)
+          .onChange(async (value) => {
+            this.plugin.settings.aiProvider = value;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("AI CLI command")
+      .setDesc("Optional custom command. The research prompt is passed through stdin.")
+      .addText((text) =>
+        text
+          .setPlaceholder('claude -p')
+          .setValue(this.plugin.settings.aiCommand || "")
+          .onChange(async (value) => {
+            this.plugin.settings.aiCommand = value.trim();
+            await this.plugin.saveSettings();
+          }),
       );
   }
 }

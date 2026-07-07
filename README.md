@@ -42,6 +42,22 @@ node bin/deep-research.mjs setup tavily
 
 The key is saved to `~/.reallygood-research.env` with file mode `600`. You can override the path with `--env-path`.
 
+To synthesize the research with an AI subscription you already use, call a local CLI instead of storing an API key:
+
+```sh
+node bin/deep-research.mjs run \
+  --topic "AI search workflow comparison" \
+  --providers tavily \
+  --vault-dir "/path/to/Obsidian/Vault/Research" \
+  --html \
+  --tavily-keyless \
+  --ai-provider claude
+```
+
+Supported built-in CLI providers are `codex`, `claude`, `gemini`, and `grok`. For any other logged-in CLI, use `--ai-provider custom --ai-command "<command>"`. The research prompt is passed through stdin.
+
+In the Obsidian plugin, choose `AI provider` from the console or settings. This uses your existing local CLI login/OAuth session; it does not ask for or store AI provider API keys.
+
 For a lightweight Tavily trial without a key:
 
 ```sh
