@@ -1,6 +1,6 @@
 # ReallyGood Research
 
-Obsidian/CLI deep-research publisher for NotebookLM, Tavily, and local research lanes.
+Obsidian/CLI deep-research publisher for NotebookLM MCP and Tavily.
 
 ## BRAT install
 
@@ -11,9 +11,22 @@ Obsidian/CLI deep-research publisher for NotebookLM, Tavily, and local research 
 
 The plugin is desktop-only because it writes files directly into your local vault.
 
-No Node path or CLI setup is required for the Obsidian plugin. The first run uses mock mode so it can create Markdown, HTML, and history files immediately after BRAT installation. For real Tavily search without an API key, turn off `Mock mode` and turn on `Tavily keyless` in the console.
+No Node path or CLI setup is required for Tavily keyless search in the Obsidian plugin. The default run mode is real Tavily keyless deep research, with Markdown, optional HTML, and history files written into the selected vault folder.
 
 To use a Tavily API key from the plugin, open the plugin settings, paste the key into `Tavily API key`, and click `Save key`. The key is saved to `~/.reallygood-research.env`, not to Obsidian settings.
+
+To use NotebookLM, install/authenticate `reallygood83/notebooklm-cli` first:
+
+```sh
+uv tool install notebooklm-mcp-cli
+nlm login
+```
+
+If `notebooklm-mcp` is not on your PATH, set `NotebookLM MCP command` in plugin settings. For this local checkout:
+
+```sh
+cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run notebooklm-mcp
+```
 
 ## CLI
 
@@ -23,7 +36,7 @@ node bin/deep-research.mjs run \
   --providers notebooklm,tavily \
   --vault-dir "/path/to/Obsidian/Vault/Research" \
   --html \
-  --mock
+  --tavily-keyless
 ```
 
 Outputs:
@@ -32,7 +45,18 @@ Outputs:
 - optional HTML report
 - JSON history under `.deep-research-publisher/`
 
-Omit `--mock` only when real provider credentials and adapters are configured. Tavily live mode uses `TAVILY_API_KEY`, or `--tavily-keyless` for Tavily's keyless access mode.
+Use `--mock` only for local test output. Tavily live mode uses `TAVILY_API_KEY`, or `--tavily-keyless` for Tavily's keyless access mode. NotebookLM mode uses the `notebooklm-mcp` stdio server from `notebooklm-cli`.
+
+NotebookLM example with a custom MCP command:
+
+```sh
+node bin/deep-research.mjs run \
+  --topic "미국 AI 에듀테크 트렌드" \
+  --providers notebooklm \
+  --vault-dir "/path/to/Obsidian/Vault/Research" \
+  --html \
+  --notebooklm-mcp-command "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run notebooklm-mcp"
+```
 
 To save a Tavily API key locally:
 

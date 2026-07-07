@@ -16,7 +16,7 @@ try {
   } else {
     throw new Error(
         "Usage: reallygood-research <run|setup|mcp>\n" +
-        "  run --topic <topic> --providers <list> --vault-dir <dir> [--html] [--mock] [--tavily-keyless] [--ai-provider <name>] [--ai-command <command>]\n" +
+        "  run --topic <topic> --providers <list> --vault-dir <dir> [--html] [--mock] [--tavily-keyless] [--ai-provider <name>] [--ai-command <command>] [--notebooklm-mcp-command <command>]\n" +
         "  setup tavily [--env-path <path>]\n" +
         "  mcp",
     );
@@ -78,7 +78,7 @@ async function handleJsonRpc(line) {
       send(message.id, {
         protocolVersion: message.params?.protocolVersion || "2025-06-18",
         capabilities: { tools: {} },
-        serverInfo: { name: "reallygood-research", version: "0.1.0" },
+        serverInfo: { name: "reallygood-research", version: "0.1.5" },
       });
     } else if (message.method === "tools/list") {
       send(message.id, { tools: tools() });
@@ -120,13 +120,13 @@ function tools() {
   return [
     {
       name: "run_research",
-      description: "Run NotebookLM/Tavily/Odysseus-style deep research and save Markdown plus optional HTML.",
+      description: "Run NotebookLM MCP and/or Tavily deep research and save Markdown plus optional HTML.",
       inputSchema: {
         type: "object",
         required: ["topic", "providers", "vaultDir"],
         properties: {
           topic: { type: "string" },
-          providers: { type: "string", description: "Comma-separated providers: notebooklm,tavily,odysseus" },
+          providers: { type: "string", description: "Comma-separated providers: notebooklm,tavily" },
           vaultDir: { type: "string" },
           sourceFile: { type: "string" },
           agent: { type: "string" },
@@ -140,6 +140,9 @@ function tools() {
           includeAnswer: { type: "boolean" },
           aiProvider: { type: "string", enum: ["none", "codex", "claude", "gemini", "grok", "custom"] },
           aiCommand: { type: "string" },
+          notebooklmMcpCommand: { type: "string", description: "Command that starts the NotebookLM MCP stdio server." },
+          notebooklmMode: { type: "string", enum: ["fast", "deep"] },
+          notebooklmMaxWait: { type: "number" },
         },
       },
     },

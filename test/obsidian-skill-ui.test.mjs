@@ -40,6 +40,9 @@ test("Obsidian main.js is BRAT-standalone and registers a runnable research cons
   assert.match(source, /--tavily-keyless/);
   assert.match(source, /AI provider/);
   assert.match(source, /aiCommand/);
+  assert.match(source, /NotebookLM MCP command/);
+  assert.match(source, /notebooklmMcpCommand/);
+  assert.doesNotMatch(source, /Odysseus/);
   assert.match(source, /createSection/);
   assert.match(source, /Copy command/);
   assert.match(source, /getSummary/);
@@ -133,7 +136,7 @@ test("Obsidian plugin migrates old demo defaults to real Tavily deep research", 
   assert.equal(plugin.settings.mock, false);
   assert.equal(plugin.settings.tavilyKeyless, true);
   assert.equal(plugin.settings.aiProvider, "none");
-  assert.equal(plugin.savedData.settingsVersion, 2);
+  assert.equal(plugin.savedData.settingsVersion, 3);
 });
 
 test("agent skill templates call the shared CLI contract", async () => {

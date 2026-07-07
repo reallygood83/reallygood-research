@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -114,6 +114,81 @@ test("tavily keyless overrides a stale env key when explicitly selected", async 
     if (oldKey === undefined) delete process.env.TAVILY_API_KEY;
     else process.env.TAVILY_API_KEY = oldKey;
   }
+});
+
+test("NotebookLM provider runs through MCP research_start and research_status", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "drp-notebooklm-mcp-"));
+  const fakeMcp = join(dir, "fake-notebooklm-mcp.mjs");
+  await writeFile(
+    fakeMcp,
+    `
+process.stdin.setEncoding("utf8");
+let buffer = "";
+function send(id, result) {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\\n");
+}
+function tool(name, args) {
+  if (name === "research_start") {
+    return {
+      structuredContent: {
+        status: "success",
+        task_id: "task-1",
+        notebook_id: "notebook-1",
+        query: args.query,
+        source: args.source,
+        mode: args.mode,
+        message: "started"
+      }
+    };
+  }
+  if (name === "research_status") {
+    return {
+      structuredContent: {
+        status: "completed",
+        notebook_id: args.notebook_id,
+        task_id: args.task_id,
+        sources_found: 1,
+        imported_count: 1,
+        report: "NotebookLM deep research report",
+        sources: [{ title: "Notebook source", url: "https://example.com/notebook" }]
+      }
+    };
+  }
+  throw new Error("unknown tool " + name);
+}
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  let newline = buffer.indexOf("\\n");
+  while (newline !== -1) {
+    const line = buffer.slice(0, newline).trim();
+    buffer = buffer.slice(newline + 1);
+    if (line) {
+      const msg = JSON.parse(line);
+      if (msg.id && msg.method === "initialize") send(msg.id, { serverInfo: { name: "fake-notebooklm" }, capabilities: { tools: {} } });
+      if (msg.id && msg.method === "tools/call") send(msg.id, tool(msg.params.name, msg.params.arguments || {}));
+    }
+    newline = buffer.indexOf("\\n");
+  }
+});
+`,
+    "utf8",
+  );
+
+  const result = await runResearchPublish({
+    topic: "NotebookLM MCP smoke",
+    providers: "notebooklm",
+    vaultDir: join(dir, "vault"),
+    html: true,
+    notebooklmMcpCommand: `${process.execPath} ${fakeMcp}`,
+    notebooklmMaxWait: 1,
+  });
+
+  const markdown = await readFile(result.markdownPath, "utf8");
+  assert.equal(result.providers[0].name, "notebooklm");
+  assert.equal(result.providers[0].mode, "mcp");
+  assert.match(markdown, /mode: mcp/);
+  assert.match(markdown, /NotebookLM deep research report/);
+  assert.match(markdown, /Notebook source/);
 });
 
 test("custom local AI CLI can synthesize provider results", async () => {

@@ -4,11 +4,10 @@ const { dirname, isAbsolute, join } = require("node:path");
 const { spawn } = require("node:child_process");
 
 const PROVIDER_OPTIONS = [
-  ["notebooklm", "NotebookLM"],
+  ["notebooklm", "NotebookLM MCP"],
   ["tavily", "Tavily"],
-  ["odysseus", "Odysseus"],
 ];
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 
 const DEFAULT_SETTINGS = {
   providers: "tavily",
@@ -18,6 +17,9 @@ const DEFAULT_SETTINGS = {
   tavilyKeyless: true,
   aiProvider: "none",
   aiCommand: "",
+  notebooklmMcpCommand: "notebooklm-mcp",
+  notebooklmMode: "deep",
+  notebooklmMaxWait: 900,
   settingsVersion: SETTINGS_VERSION,
 };
 
@@ -76,6 +78,9 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
       tavilyKeyless: this.settings.tavilyKeyless,
       aiProvider: this.settings.aiProvider || DEFAULT_SETTINGS.aiProvider,
       aiCommand: this.settings.aiCommand || DEFAULT_SETTINGS.aiCommand,
+      notebooklmMcpCommand: this.settings.notebooklmMcpCommand || DEFAULT_SETTINGS.notebooklmMcpCommand,
+      notebooklmMode: this.settings.notebooklmMode || DEFAULT_SETTINGS.notebooklmMode,
+      notebooklmMaxWait: this.settings.notebooklmMaxWait || DEFAULT_SETTINGS.notebooklmMaxWait,
     };
   }
 
@@ -121,6 +126,9 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
     if (this.settings.aiProvider && this.settings.aiProvider !== "none") {
       args.push("--ai-provider", this.settings.aiProvider);
       if (this.settings.aiCommand) args.push("--ai-command", quote(this.settings.aiCommand));
+    }
+    if (this.settings.notebooklmMcpCommand !== DEFAULT_SETTINGS.notebooklmMcpCommand) {
+      args.push("--notebooklm-mcp-command", quote(this.settings.notebooklmMcpCommand));
     }
     return args.join(" ");
   }
@@ -227,6 +235,21 @@ class ResearchModal extends Modal {
         }),
       );
 
+    const notebookSection = createSection(contentEl, "NotebookLM MCP");
+    new Setting(notebookSection)
+      .setName("MCP command")
+      .setDesc("Default: notebooklm-mcp. Run nlm login before using NotebookLM.")
+      .addText((text) =>
+        text
+          .setPlaceholder("notebooklm-mcp")
+          .setValue(this.plugin.settings.notebooklmMcpCommand || DEFAULT_SETTINGS.notebooklmMcpCommand)
+          .onChange(async (value) => {
+            this.plugin.settings.notebooklmMcpCommand = value.trim() || DEFAULT_SETTINGS.notebooklmMcpCommand;
+            await this.plugin.saveSettings();
+            summaryEl.setText(this.getSummary());
+          }),
+      );
+
     const aiSection = createSection(contentEl, "AI synthesis");
     new Setting(aiSection)
       .setName("AI provider")
@@ -314,6 +337,7 @@ class ResearchModal extends Modal {
       `HTML: ${this.plugin.settings.html ? "on" : "off"}`,
       `Mode: ${this.plugin.settings.mock ? "test/mock" : "deep research"}`,
       `Tavily: ${this.plugin.settings.tavilyKeyless ? "keyless" : "env/API key"}`,
+      `NotebookLM: ${this.plugin.settings.notebooklmMcpCommand || DEFAULT_SETTINGS.notebooklmMcpCommand}`,
       `AI: ${this.plugin.settings.aiProvider || "none"}`,
     ].join(" | ");
   }
@@ -333,12 +357,39 @@ class ResearchSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Providers")
-      .setDesc("Comma-separated: notebooklm,tavily,odysseus.")
+      .setDesc("Comma-separated: notebooklm,tavily.")
       .addText((text) =>
         text
           .setValue(this.plugin.settings.providers)
           .onChange(async (value) => {
             this.plugin.settings.providers = value.trim() || DEFAULT_SETTINGS.providers;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("NotebookLM MCP command")
+      .setDesc("Default: notebooklm-mcp. If using the local checkout, use: cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run notebooklm-mcp")
+      .addText((text) =>
+        text
+          .setPlaceholder("notebooklm-mcp")
+          .setValue(this.plugin.settings.notebooklmMcpCommand || DEFAULT_SETTINGS.notebooklmMcpCommand)
+          .onChange(async (value) => {
+            this.plugin.settings.notebooklmMcpCommand = value.trim() || DEFAULT_SETTINGS.notebooklmMcpCommand;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("NotebookLM max wait")
+      .setDesc("Seconds to wait for NotebookLM deep research completion.")
+      .addText((text) =>
+        text
+          .setPlaceholder("900")
+          .setValue(String(this.plugin.settings.notebooklmMaxWait || DEFAULT_SETTINGS.notebooklmMaxWait))
+          .onChange(async (value) => {
+            const parsed = Number(value);
+            this.plugin.settings.notebooklmMaxWait = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SETTINGS.notebooklmMaxWait;
             await this.plugin.saveSettings();
           }),
       );
@@ -459,7 +510,7 @@ function migrateSettings(settings, savedSettings) {
   return settings;
 }
 
-const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily", "odysseus"]);
+const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily"]);
 
 async function runResearchPublish(input) {
   const request = validateResearchRequest(input);
@@ -530,12 +581,16 @@ function validateResearchRequest(input) {
     includeAnswer: input.includeAnswer === undefined ? true : Boolean(input.includeAnswer),
     aiProvider: stringValue(input.aiProvider) || "none",
     aiCommand: stringValue(input.aiCommand),
+    notebooklmMcpCommand: stringValue(input.notebooklmMcpCommand) || "notebooklm-mcp",
+    notebooklmMode: stringValue(input.notebooklmMode) || "deep",
+    notebooklmMaxWait: numberValue(input.notebooklmMaxWait, 900),
   };
 }
 
 async function runProvider(name, request) {
   if (!request.mock) {
     if (name === "tavily") return runTavilyProvider(request);
+    if (name === "notebooklm") return runNotebookLmProvider(request);
     throw new Error(`Provider ${name} requires an integration; rerun with Mock mode for local mock mode`);
   }
 
@@ -545,6 +600,203 @@ async function runProvider(name, request) {
     metadata: { topic: request.topic, agent: request.agent },
     content: mockProviderContent(name, request.topic),
   };
+}
+
+async function runNotebookLmProvider(request) {
+  const session = createMcpSession(request.notebooklmMcpCommand, request.notebooklmMaxWait * 1000 + 30000);
+  try {
+    await session.start();
+    const start = normalizeMcpToolPayload(
+      await session.callTool("research_start", {
+        query: request.topic,
+        source: "web",
+        mode: request.notebooklmMode,
+        title: truncateTitle(`ReallyGood Research - ${request.topic}`),
+      }),
+    );
+    assertNotebookLmSuccess(start, "research_start");
+
+    const notebookId = stringValue(start.notebook_id);
+    const taskId = stringValue(start.task_id);
+    if (!notebookId) throw new Error("NotebookLM MCP research_start did not return notebook_id");
+
+    const status = normalizeMcpToolPayload(
+      await session.callTool("research_status", {
+        notebook_id: notebookId,
+        task_id: taskId || undefined,
+        query: request.topic,
+        auto_import: true,
+        compact: false,
+        max_wait: request.notebooklmMaxWait,
+        poll_interval: 15,
+      }),
+    );
+    assertNotebookLmSuccess(status, "research_status");
+
+    return {
+      name: "notebooklm",
+      mode: "mcp",
+      metadata: {
+        notebookId,
+        taskId: stringValue(status.task_id) || taskId || null,
+        status: status.status || null,
+        sourcesFound: status.sources_found ?? null,
+        importedCount: status.imported_count ?? null,
+        command: request.notebooklmMcpCommand,
+        researchMode: request.notebooklmMode,
+      },
+      content: renderNotebookLmContent(start, status),
+    };
+  } finally {
+    session.stop();
+  }
+}
+
+function createMcpSession(command, timeoutMs) {
+  let child = null;
+  let stdout = "";
+  let stderr = "";
+  let nextId = 1;
+  const pending = new Map();
+
+  function start() {
+    return new Promise((resolve, reject) => {
+      child = spawn(command, { shell: true, stdio: ["pipe", "pipe", "pipe"], env: process.env });
+      const timer = setTimeout(() => reject(new Error(`NotebookLM MCP did not initialize: ${command}`)), 30000);
+      child.stdout.on("data", (chunk) => {
+        stdout += String(chunk);
+        drainStdout();
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += String(chunk);
+      });
+      child.on("error", (error) => {
+        clearTimeout(timer);
+        reject(new Error(`NotebookLM MCP failed to start: ${error.message}`));
+      });
+      child.on("close", (code) => {
+        const error = new Error(`NotebookLM MCP exited (${code}): ${stderr.trim() || command}`);
+        for (const { reject: rejectPending } of pending.values()) rejectPending(error);
+        pending.clear();
+      });
+
+      send("initialize", {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "reallygood-research", version: "0.1.5" },
+      })
+        .then(() => {
+          clearTimeout(timer);
+          write({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+          resolve();
+        })
+        .catch((error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+    });
+  }
+
+  function callTool(name, args) {
+    return send("tools/call", { name, arguments: removeUndefined(args) });
+  }
+
+  function send(method, params) {
+    if (!child) return Promise.reject(new Error("NotebookLM MCP session is not started"));
+    const id = nextId;
+    nextId += 1;
+    let reject;
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`NotebookLM MCP timed out during ${method}: ${stderr.trim() || command}`));
+    }, timeoutMs);
+    const promise = new Promise((resolve, rejectPromise) => {
+      reject = rejectPromise;
+      pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          rejectPromise(error);
+        },
+      });
+    });
+    write({ jsonrpc: "2.0", id, method, params });
+    return promise;
+  }
+
+  function write(message) {
+    child.stdin.write(`${JSON.stringify(message)}\n`);
+  }
+
+  function drainStdout() {
+    let newline = stdout.indexOf("\n");
+    while (newline !== -1) {
+      const line = stdout.slice(0, newline).trim();
+      stdout = stdout.slice(newline + 1);
+      if (line) {
+        try {
+          const message = JSON.parse(line);
+          const waiting = pending.get(message.id);
+          if (waiting) {
+            pending.delete(message.id);
+            if (message.error) waiting.reject(new Error(message.error.message || JSON.stringify(message.error)));
+            else waiting.resolve(message.result);
+          }
+        } catch {
+          stderr += `\n${line}`;
+        }
+      }
+      newline = stdout.indexOf("\n");
+    }
+  }
+
+  function stop() {
+    if (child && !child.killed) child.kill("SIGTERM");
+  }
+
+  return { start, callTool, stop };
+}
+
+function normalizeMcpToolPayload(result) {
+  if (result?.structuredContent && Object.keys(result.structuredContent).length) return result.structuredContent;
+  const text = Array.isArray(result?.content)
+    ? result.content.map((item) => (item?.type === "text" ? item.text : "")).join("\n").trim()
+    : "";
+  if (text) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { status: "success", text };
+    }
+  }
+  return result || {};
+}
+
+function assertNotebookLmSuccess(payload, tool) {
+  if (payload?.status === "error") {
+    const hint = payload.hint ? ` Hint: ${payload.hint}` : "";
+    throw new Error(`NotebookLM MCP ${tool} failed: ${payload.error || payload.message || "unknown error"}${hint}`);
+  }
+}
+
+function renderNotebookLmContent(start, status) {
+  const lines = [];
+  if (status.report) lines.push(String(status.report).trim(), "");
+  if (status.message) lines.push(`Message: ${status.message}`, "");
+  const sources = Array.isArray(status.sources) ? status.sources : [];
+  if (sources.length) {
+    lines.push("Sources:");
+    for (const [index, source] of sources.entries()) {
+      const title = source?.title || source?.url || `Source ${index + 1}`;
+      const url = source?.url ? ` - ${source.url}` : "";
+      lines.push(`- ${title}${url}`);
+    }
+  }
+  if (!lines.length) lines.push(start.message || "NotebookLM research completed without a report payload.");
+  return lines.join("\n").trim();
 }
 
 async function runTavilyProvider(request) {
@@ -731,9 +983,16 @@ function mockProviderContent(name, topic) {
   const labels = {
     notebooklm: "Notebook-style synthesis",
     tavily: "Search-grounded brief",
-    odysseus: "Long-form reasoning brief",
   };
   return `${labels[name]} for ${topic}. No source file supplied.`;
+}
+
+function truncateTitle(value) {
+  return String(value).replace(/\s+/g, " ").trim().slice(0, 120) || "ReallyGood Research";
+}
+
+function removeUndefined(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 }
 
 async function saveTavilyApiKey(apiKey, envFile = defaultEnvFile()) {

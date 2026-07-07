@@ -61,11 +61,11 @@ test("run command prints and creates markdown and html outputs", async () => {
   assert.match(await readFile(htmlPath, "utf8"), /Agentic AI vertical market/);
 });
 
-test("run command rejects non-mock provider execution", async () => {
+test("run command rejects removed Odysseus provider", async () => {
   const result = await runCli([
     "run",
     "--topic",
-    "Real provider",
+    "Removed provider",
     "--providers",
     "odysseus",
     "--vault-dir",
@@ -73,7 +73,61 @@ test("run command rejects non-mock provider execution", async () => {
   ]);
 
   assert.notEqual(result.code, 0);
-  assert.match(result.stderr, /Provider odysseus requires an integration/);
+  assert.match(result.stderr, /Unsupported provider: odysseus/);
+});
+
+test("run command can drive NotebookLM through an MCP command", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "drp-cli-mcp-"));
+  const fakeMcp = join(dir, "fake-notebooklm-mcp.mjs");
+  await writeFile(
+    fakeMcp,
+    `
+process.stdin.setEncoding("utf8");
+let buffer = "";
+function send(id, result) {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\\n");
+}
+function tool(name, args) {
+  if (name === "research_start") return { structuredContent: { status: "success", task_id: "task-cli", notebook_id: "notebook-cli", query: args.query, mode: args.mode } };
+  if (name === "research_status") return { structuredContent: { status: "completed", notebook_id: args.notebook_id, task_id: args.task_id, report: "CLI NotebookLM report", sources_found: 0, sources: [] } };
+  throw new Error(name);
+}
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  let newline = buffer.indexOf("\\n");
+  while (newline !== -1) {
+    const line = buffer.slice(0, newline).trim();
+    buffer = buffer.slice(newline + 1);
+    if (line) {
+      const msg = JSON.parse(line);
+      if (msg.id && msg.method === "initialize") send(msg.id, { serverInfo: { name: "fake-notebooklm" }, capabilities: { tools: {} } });
+      if (msg.id && msg.method === "tools/call") send(msg.id, tool(msg.params.name, msg.params.arguments || {}));
+    }
+    newline = buffer.indexOf("\\n");
+  }
+});
+`,
+    "utf8",
+  );
+
+  const result = await runCli([
+    "run",
+    "--topic",
+    "CLI NotebookLM MCP",
+    "--providers",
+    "notebooklm",
+    "--vault-dir",
+    join(dir, "vault"),
+    "--html",
+    "--notebooklm-mcp-command",
+    `${process.execPath} ${fakeMcp}`,
+    "--notebooklm-max-wait",
+    "1",
+  ]);
+
+  assert.equal(result.code, 0, result.stderr);
+  const markdownPath = result.stdout.match(/Markdown: (.+\.md)/)[1].trim();
+  assert.match(await readFile(markdownPath, "utf8"), /CLI NotebookLM report/);
 });
 
 test("setup tavily stores api key in env file", async () => {
