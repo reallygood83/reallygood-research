@@ -140,7 +140,7 @@ test("Obsidian plugin migrates old demo defaults to real Tavily deep research", 
   assert.equal(plugin.settings.mock, false);
   assert.equal(plugin.settings.tavilyKeyless, true);
   assert.equal(plugin.settings.aiProvider, "none");
-  assert.equal(plugin.savedData.settingsVersion, 4);
+  assert.equal(plugin.savedData.settingsVersion, 5);
 });
 
 test("Obsidian plugin can run the configured NotebookLM login command", async () => {

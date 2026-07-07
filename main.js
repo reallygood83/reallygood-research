@@ -7,7 +7,7 @@ const PROVIDER_OPTIONS = [
   ["notebooklm", "NotebookLM MCP"],
   ["tavily", "Tavily"],
 ];
-const SETTINGS_VERSION = 4;
+const SETTINGS_VERSION = 5;
 
 const DEFAULT_SETTINGS = {
   providers: "tavily",
@@ -709,7 +709,7 @@ function createMcpSession(command, timeoutMs) {
 
   function start() {
     return new Promise((resolve, reject) => {
-      child = spawn(command, { shell: true, stdio: ["pipe", "pipe", "pipe"], env: process.env });
+      child = spawn(command, { shell: true, stdio: ["pipe", "pipe", "pipe"], env: shellEnv() });
       const timer = setTimeout(() => reject(new Error(`NotebookLM MCP did not initialize: ${command}`)), 30000);
       child.stdout.on("data", (chunk) => {
         stdout += String(chunk);
@@ -942,7 +942,7 @@ function runAiCommand(command, prompt) {
 
 function runShellCommand(command, stdin = "", timeoutMs = 180000) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, { shell: true, stdio: ["pipe", "pipe", "pipe"], env: process.env });
+    const child = spawn(command, { shell: true, stdio: ["pipe", "pipe", "pipe"], env: shellEnv() });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
@@ -1131,6 +1131,11 @@ function stringValue(value) {
 function numberValue(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function shellEnv() {
+  const extraPath = ["/opt/homebrew/bin", "/usr/local/bin", `${process.env.HOME || ""}/.local/bin`, `${process.env.HOME || ""}/.cargo/bin`];
+  return { ...process.env, PATH: [...extraPath, process.env.PATH || ""].filter(Boolean).join(":") };
 }
 
 function yamlString(value) {
