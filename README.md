@@ -11,24 +11,81 @@ Obsidian/CLI deep-research publisher for NotebookLM MCP and Tavily.
 
 The plugin is desktop-only because it writes files directly into your local vault.
 
-No Node path or CLI setup is required for Tavily keyless search in the Obsidian plugin. The default run mode is real Tavily keyless deep research, with Markdown, optional HTML, and history files written into the selected vault folder.
+## Quick start
 
-To use a Tavily API key from the plugin, open the plugin settings, paste the key into `Tavily API key`, and click `Save key`. The key is saved to `~/.reallygood-research.env`, not to Obsidian settings.
+### Tavily only
 
-To use NotebookLM, install/authenticate `reallygood83/notebooklm-cli` first:
+This is the easiest path and works immediately after BRAT install.
+
+1. Keep `Providers` as `tavily`.
+2. Keep `Tavily keyless` on for a quick trial.
+3. Choose an output folder.
+4. Run a research topic.
+
+The plugin writes:
+
+- a Markdown note
+- an optional HTML report
+- JSON history under `.deep-research-publisher/`
+
+For better limits and reliability, paste a Tavily API key into `Tavily API key`, click `Save key`, then turn `Tavily keyless` off. The key is saved to `~/.reallygood-research.env`, not to Obsidian settings.
+
+### NotebookLM
+
+NotebookLM requires the local `notebooklm-cli` tools.
 
 ```sh
 uv tool install notebooklm-mcp-cli
-nlm login
 ```
 
-If `notebooklm-mcp` is not on your PATH, set `NotebookLM MCP command` in plugin settings. For this local checkout:
+Then in Obsidian settings:
+
+```text
+NotebookLM login command: nlm login
+NotebookLM MCP command: notebooklm-mcp
+```
+
+Click `Run login`, approve the browser login, then set `Providers` to either:
+
+```text
+notebooklm
+```
+
+or:
+
+```text
+notebooklm,tavily
+```
+
+If `uv`, `nlm`, or `notebooklm-mcp` is not on the Obsidian shell path, use absolute paths in those two command fields.
+
+### AI synthesis
+
+AI synthesis is optional. It uses a local CLI that the user has already logged into, not an API key stored by this plugin.
+
+Supported built-in choices:
+
+- `codex`
+- `claude`
+- `gemini`
+- `grok`
+- `custom`
+
+Leave `AI provider` as `None` if no local AI CLI is installed or logged in.
+
+## Local checkout example
+
+If you are developing against a local `notebooklm-cli` checkout, use commands like:
 
 ```sh
-cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run notebooklm-mcp
+cd /path/to/notebooklm-cli && uv run nlm login
 ```
 
-The Obsidian settings tab also has a `Run login` button. Set `NotebookLM login command` to `cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run nlm login` if you use the local checkout, then click the button instead of opening Terminal yourself.
+```sh
+cd /path/to/notebooklm-cli && uv run notebooklm-mcp
+```
+
+On macOS Homebrew installs, Obsidian may not inherit `/opt/homebrew/bin`. In that case, use `/opt/homebrew/bin/uv` instead of `uv`.
 
 ## CLI
 
@@ -57,7 +114,7 @@ node bin/deep-research.mjs run \
   --providers notebooklm \
   --vault-dir "/path/to/Obsidian/Vault/Research" \
   --html \
-  --notebooklm-mcp-command "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run notebooklm-mcp"
+  --notebooklm-mcp-command "notebooklm-mcp"
 ```
 
 To save a Tavily API key locally:
