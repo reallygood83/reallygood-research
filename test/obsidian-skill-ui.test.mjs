@@ -40,6 +40,10 @@ test("Obsidian main.js is BRAT-standalone and registers a runnable research cons
   assert.match(source, /--tavily-keyless/);
   assert.match(source, /AI provider/);
   assert.match(source, /aiCommand/);
+  assert.match(source, /createSection/);
+  assert.match(source, /Copy command/);
+  assert.match(source, /getSummary/);
+  assert.match(source, /setProviderEnabled/);
 });
 
 test("Obsidian main.js runs after BRAT installs only manifest, main, and styles", async () => {
@@ -81,6 +85,7 @@ test("Obsidian main.js runs after BRAT installs only manifest, main, and styles"
   assert.equal(existsSync(result.htmlPath), true);
   assert.equal(existsSync(result.historyPath), true);
   assert.match(await readFile(result.markdownPath, "utf8"), /BRAT standalone smoke/);
+  assert.match(await readFile(result.htmlPath, "utf8"), /BRAT standalone smoke/);
 });
 
 test("agent skill templates call the shared CLI contract", async () => {

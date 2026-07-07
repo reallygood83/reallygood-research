@@ -3,6 +3,12 @@ const { chmod, mkdir, readFile, writeFile } = require("node:fs/promises");
 const { dirname, isAbsolute, join } = require("node:path");
 const { spawn } = require("node:child_process");
 
+const PROVIDER_OPTIONS = [
+  ["notebooklm", "NotebookLM"],
+  ["tavily", "Tavily"],
+  ["odysseus", "Odysseus"],
+];
+
 const DEFAULT_SETTINGS = {
   providers: "notebooklm,tavily",
   vaultDir: ".",
@@ -67,6 +73,19 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
     };
   }
 
+  getProviderSet() {
+    return new Set(normalizeProviders(this.settings.providers || DEFAULT_SETTINGS.providers));
+  }
+
+  async setProviderEnabled(provider, enabled) {
+    const providers = this.getProviderSet();
+    if (enabled) providers.add(provider);
+    else providers.delete(provider);
+    if (!providers.size) providers.add("tavily");
+    this.settings.providers = [...providers].filter((name) => SUPPORTED_PROVIDERS.has(name)).join(",");
+    await this.saveSettings();
+  }
+
   async saveTavilyApiKey(apiKey) {
     return saveTavilyApiKey(apiKey);
   }
@@ -125,9 +144,14 @@ class ResearchModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("reallygood-research-modal");
-    contentEl.createEl("h2", { text: "ReallyGood Research" });
+    this.output = "";
 
-    new Setting(contentEl)
+    const header = contentEl.createDiv({ cls: "reallygood-research-header" });
+    header.createEl("h2", { text: "ReallyGood Research" });
+    header.createEl("p", { text: "Deep research to Markdown and HTML inside this vault." });
+
+    const topicSection = createSection(contentEl, "Research");
+    new Setting(topicSection)
       .setName("Topic")
       .setDesc("Research question or brief.")
       .addTextArea((text) =>
@@ -138,45 +162,66 @@ class ResearchModal extends Modal {
           }),
       );
 
-    new Setting(contentEl)
-      .setName("Providers")
+    const providerSection = createSection(contentEl, "Providers");
+    for (const [provider, label] of PROVIDER_OPTIONS) {
+      new Setting(providerSection)
+        .setName(label)
+        .addToggle((toggle) =>
+          toggle.setValue(this.plugin.getProviderSet().has(provider)).onChange(async (value) => {
+            await this.plugin.setProviderEnabled(provider, value);
+            summaryEl.setText(this.getSummary());
+          }),
+        );
+    }
+
+    const outputSection = createSection(contentEl, "Output");
+    new Setting(outputSection)
+      .setName("Folder")
+      .setDesc("Relative to the vault, or an absolute path.")
       .addText((text) =>
         text
-          .setValue(this.plugin.settings.providers)
+          .setPlaceholder("300-Creator/350-NewsInsight")
+          .setValue(this.plugin.settings.vaultDir)
           .onChange(async (value) => {
-            this.plugin.settings.providers = value.trim() || DEFAULT_SETTINGS.providers;
+            this.plugin.settings.vaultDir = value.trim() || DEFAULT_SETTINGS.vaultDir;
             await this.plugin.saveSettings();
+            summaryEl.setText(this.getSummary());
           }),
       );
 
-    new Setting(contentEl)
+    new Setting(outputSection)
       .setName("Export HTML")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.html).onChange(async (value) => {
           this.plugin.settings.html = value;
           await this.plugin.saveSettings();
+          summaryEl.setText(this.getSummary());
         }),
       );
 
-    new Setting(contentEl)
+    const runSection = createSection(contentEl, "Run mode");
+    new Setting(runSection)
       .setName("Mock mode")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.mock).onChange(async (value) => {
           this.plugin.settings.mock = value;
           await this.plugin.saveSettings();
+          summaryEl.setText(this.getSummary());
         }),
       );
 
-    new Setting(contentEl)
+    new Setting(runSection)
       .setName("Tavily keyless")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.tavilyKeyless).onChange(async (value) => {
           this.plugin.settings.tavilyKeyless = value;
           await this.plugin.saveSettings();
+          summaryEl.setText(this.getSummary());
         }),
       );
 
-    new Setting(contentEl)
+    const aiSection = createSection(contentEl, "AI synthesis");
+    new Setting(aiSection)
       .setName("AI provider")
       .addDropdown((dropdown) =>
         dropdown
@@ -190,23 +235,50 @@ class ResearchModal extends Modal {
           .onChange(async (value) => {
             this.plugin.settings.aiProvider = value;
             await this.plugin.saveSettings();
+            summaryEl.setText(this.getSummary());
           }),
       );
 
-    const logEl = contentEl.createEl("pre", { cls: "reallygood-research-log" });
+    new Setting(aiSection)
+      .setName("Custom command")
+      .setDesc("Used only when AI provider is Custom CLI.")
+      .addText((text) =>
+        text
+          .setPlaceholder('claude -p')
+          .setValue(this.plugin.settings.aiCommand || "")
+          .onChange(async (value) => {
+            this.plugin.settings.aiCommand = value.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
 
-    new Setting(contentEl).addButton((button) =>
-      button
-        .setButtonText("Start")
-        .setCta()
-        .onClick(async () => {
+    const summaryEl = contentEl.createDiv({ cls: "reallygood-research-summary", text: this.getSummary() });
+    const logEl = contentEl.createEl("pre", { cls: "reallygood-research-log" });
+    logEl.setText("Ready.");
+
+    const actionsEl = contentEl.createDiv({ cls: "reallygood-research-actions" });
+    new Setting(actionsEl)
+      .addButton((button) =>
+        button
+          .setButtonText("Copy command")
+          .onClick(async () => {
+            await navigator.clipboard.writeText(this.plugin.buildCommandPreview(this.topic || "Research topic"));
+            new Notice("ReallyGood Research command copied.");
+          }),
+      )
+      .addButton((button) =>
+        button
+          .setButtonText("Start")
+          .setCta()
+          .onClick(async () => {
           if (!this.topic) {
             new Notice("Enter a research topic first.");
             return;
           }
 
           button.setDisabled(true);
-          logEl.setText("Running...\n");
+          this.output = `Running...\n${this.getSummary()}\n\n`;
+          logEl.setText(this.output);
 
           try {
             await this.plugin.runResearch(this.topic, (line) => {
@@ -221,11 +293,22 @@ class ResearchModal extends Modal {
             button.setDisabled(false);
           }
         }),
-    );
+      );
   }
 
   onClose() {
     this.contentEl.empty();
+  }
+
+  getSummary() {
+    return [
+      `Providers: ${this.plugin.settings.providers}`,
+      `Folder: ${this.plugin.settings.vaultDir || DEFAULT_SETTINGS.vaultDir}`,
+      `HTML: ${this.plugin.settings.html ? "on" : "off"}`,
+      `Mode: ${this.plugin.settings.mock ? "mock" : "live"}`,
+      `Tavily: ${this.plugin.settings.tavilyKeyless ? "keyless" : "env/API key"}`,
+      `AI: ${this.plugin.settings.aiProvider || "none"}`,
+    ].join(" | ");
   }
 }
 
@@ -341,6 +424,12 @@ class ResearchSettingTab extends PluginSettingTab {
 
 function quote(value) {
   return `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+function createSection(parent, heading) {
+  const section = parent.createDiv({ cls: "reallygood-research-section" });
+  section.createEl("h3", { text: heading });
+  return section;
 }
 
 const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily", "odysseus"]);

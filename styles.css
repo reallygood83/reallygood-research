@@ -1,5 +1,53 @@
+.reallygood-research-modal {
+  max-width: 860px;
+}
+
+.reallygood-research-header {
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+}
+
+.reallygood-research-header h2 {
+  margin: 0 0 4px;
+}
+
+.reallygood-research-header p {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.reallygood-research-section {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 10px 0;
+}
+
+.reallygood-research-section h3 {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  letter-spacing: 0;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+
 .reallygood-research-modal textarea {
   min-height: 120px;
+}
+
+.reallygood-research-modal textarea,
+.reallygood-research-modal input,
+.reallygood-research-modal select {
+  width: min(100%, 360px);
+}
+
+.reallygood-research-summary {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-top: 14px;
+  padding: 10px 12px;
 }
 
 .reallygood-research-log {
@@ -10,4 +58,9 @@
   border-radius: 6px;
   background: var(--background-secondary);
   white-space: pre-wrap;
+}
+
+.reallygood-research-actions .setting-item-control {
+  gap: 8px;
+  justify-content: flex-end;
 }
