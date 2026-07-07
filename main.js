@@ -1442,7 +1442,7 @@ function renderTavilyContent(payload, results) {
 }
 
 function renderTavilyResearchContent(payload) {
-  const report = payload.report || payload.answer || payload.output || payload.result || "";
+  const report = payload.report || payload.content || payload.answer || payload.output || payload.result || "";
   const lines = ["### Tavily Research Report", "", String(report || "Tavily research completed without a report payload.").trim(), ""];
   const sources = Array.isArray(payload.sources) ? payload.sources : Array.isArray(payload.results) ? payload.results : [];
   if (sources.length) {

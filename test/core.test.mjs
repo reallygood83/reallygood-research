@@ -189,7 +189,7 @@ test("tavily provider uses Research API when an API key is configured", async ()
           request_id: "research-1",
           status: "completed",
           model: "mini",
-          report: "# Research answer\n\nDeeper cited synthesis.",
+          content: "# Research answer\n\nDeeper cited synthesis.",
           sources: [{ title: "Evidence", url: "https://example.com", content: "supporting source" }],
         }),
       };
