@@ -158,6 +158,11 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
     return result;
   }
 
+  async openHtmlReport(htmlPath) {
+    if (!htmlPath) throw new Error("No HTML report has been generated yet.");
+    await openPathInBrowser(htmlPath);
+  }
+
   async saveSettings() {
     await this.saveData(this.settings);
   }
@@ -322,6 +327,8 @@ class ResearchModal extends Modal {
     logEl.setText("Ready.");
 
     const actionsEl = contentEl.createDiv({ cls: "reallygood-research-actions" });
+    let lastHtmlPath = null;
+    let openHtmlButton = null;
     new Setting(actionsEl)
       .addButton((button) =>
         button
@@ -331,6 +338,19 @@ class ResearchModal extends Modal {
             new Notice("ReallyGood Research command copied.");
           }),
       )
+      .addButton((button) => {
+        openHtmlButton = button;
+        button
+          .setButtonText("Open HTML")
+          .setDisabled(true)
+          .onClick(async () => {
+            try {
+              await this.plugin.openHtmlReport(lastHtmlPath);
+            } catch (error) {
+              new Notice(error instanceof Error ? error.message : String(error));
+            }
+          });
+      })
       .addButton((button) =>
         button
           .setButtonText("Start")
@@ -346,10 +366,12 @@ class ResearchModal extends Modal {
           logEl.setText(this.output);
 
           try {
-            await this.plugin.runResearch(this.topic, (line) => {
+            const result = await this.plugin.runResearch(this.topic, (line) => {
               this.output += line;
               logEl.setText(this.output);
             });
+            lastHtmlPath = result.htmlPath;
+            if (openHtmlButton) openHtmlButton.setDisabled(!lastHtmlPath);
             new Notice("ReallyGood Research finished.");
           } catch (error) {
             logEl.setText(`${this.output}\n${error.message}`);
@@ -596,6 +618,12 @@ function normalizeLocalNotebookLmCommand(command, tool) {
     "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run ",
     "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run ",
   ) || tool;
+}
+
+async function openPathInBrowser(filePath) {
+  const { shell } = require("electron");
+  const error = await shell.openPath(filePath);
+  if (error) throw new Error(error);
 }
 
 const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily"]);

@@ -55,8 +55,57 @@ test("Obsidian main.js is BRAT-standalone and registers a runnable research cons
   assert.doesNotMatch(source, /Odysseus/);
   assert.match(source, /createSection/);
   assert.match(source, /Copy command/);
+  assert.match(source, /Open HTML/);
+  assert.match(source, /openPath/);
   assert.match(source, /getSummary/);
   assert.match(source, /setProviderEnabled/);
+});
+
+test("Obsidian plugin opens generated HTML through Electron shell", async () => {
+  const module = { exports: {} };
+  let openedPath = null;
+  class Plugin {
+    async loadData() {
+      return {};
+    }
+    async saveData(data) {
+      this.savedData = data;
+    }
+    addRibbonIcon() {}
+    addCommand() {}
+    addSettingTab() {}
+  }
+  class Modal {}
+  class PluginSettingTab {}
+  class Setting {}
+  const Notice = function Notice(message) {
+    return message;
+  };
+  const requireStub = (id) => {
+    if (id === "obsidian") return { Modal, Notice, Plugin, PluginSettingTab, Setting };
+    if (id === "electron") {
+      return {
+        shell: {
+          async openPath(path) {
+            openedPath = path;
+            return "";
+          },
+        },
+      };
+    }
+    return require(id);
+  };
+  const source = await read("main.js");
+  Function("require", "module", "exports", source)(requireStub, module, module.exports);
+
+  const PluginClass = module.exports;
+  const plugin = new PluginClass();
+  plugin.app = { vault: { adapter: { getBasePath: () => "/tmp" } } };
+  plugin.manifest = { id: "reallygood-research", dir: ".obsidian/plugins/reallygood-research" };
+  await plugin.onload();
+  await plugin.openHtmlReport("/tmp/report.html");
+
+  assert.equal(openedPath, "/tmp/report.html");
 });
 
 test("Obsidian main.js runs after BRAT installs only manifest, main, and styles", async () => {
