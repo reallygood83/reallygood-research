@@ -84,6 +84,20 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
     this.addSettingTab(new ResearchSettingTab(this.app, this));
   }
 
+  getResearchJob() {
+    return this.currentJob || null;
+  }
+
+  subscribeResearchJob(listener) {
+    this.jobListeners = this.jobListeners || new Set();
+    this.jobListeners.add(listener);
+    return () => this.jobListeners?.delete(listener);
+  }
+
+  notifyResearchJob() {
+    for (const listener of this.jobListeners || []) listener(this.currentJob);
+  }
+
   getVaultBasePath() {
     return this.app.vault.adapter.getBasePath?.() || ".";
   }
@@ -171,12 +185,43 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
     return args.join(" ");
   }
 
-  async runResearch(topic, onData) {
-    const result = await runResearchPublish(this.buildRequest(topic));
-    onData(`Markdown: ${result.markdownPath}\n`);
-    if (result.htmlPath) onData(`HTML: ${result.htmlPath}\n`);
-    onData(`History: ${result.historyPath}\n`);
-    return result;
+  runResearch(topic, onData) {
+    if (this.currentJob?.status === "running") return this.currentJob.promise;
+    const job = {
+      topic,
+      status: "running",
+      log: `Running...\n${this.buildSummary()}\n\n`,
+      result: null,
+      error: null,
+      promise: null,
+    };
+    this.currentJob = job;
+    this.notifyResearchJob();
+    const append = (line) => {
+      job.log += line;
+      onData?.(line);
+      this.notifyResearchJob();
+    };
+    job.promise = runResearchPublish(this.buildRequest(topic))
+      .then((result) => {
+        job.status = "finished";
+        job.result = result;
+        append(`Markdown: ${result.markdownPath}\n`);
+        if (result.htmlPath) append(`HTML: ${result.htmlPath}\n`);
+        append(`History: ${result.historyPath}\n`);
+        new Notice("ReallyGood Research finished.");
+        return result;
+      })
+      .catch((error) => {
+        job.status = "failed";
+        job.error = error instanceof Error ? error.message : String(error);
+        append(`${job.error}\n`);
+        throw error;
+      })
+      .finally(() => {
+        this.notifyResearchJob();
+      });
+    return job.promise;
   }
 
   async openHtmlReport(htmlPath) {
@@ -196,6 +241,18 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
   }
+
+  buildSummary() {
+    return [
+      `Providers: ${this.settings.providers}`,
+      `Folder: ${this.settings.vaultDir || DEFAULT_SETTINGS.vaultDir}`,
+      `HTML: ${this.settings.html ? "on" : "off"}`,
+      `Mode: ${describeRunMode(this.settings)}`,
+      "Tavily: Research API key required",
+      `NotebookLM: ${this.settings.notebooklmMcpCommand || DEFAULT_SETTINGS.notebooklmMcpCommand}`,
+      `AI: ${this.settings.aiProvider || "none"}`,
+    ].join(" | ");
+  }
 };
 
 class ResearchModal extends Modal {
@@ -211,6 +268,7 @@ class ResearchModal extends Modal {
     contentEl.empty();
     contentEl.addClass("reallygood-research-modal");
     this.output = "";
+    this.unsubscribeJob = null;
 
     const header = contentEl.createDiv({ cls: "reallygood-research-header" });
     header.createEl("h2", { text: "ReallyGood Research" });
@@ -382,11 +440,20 @@ class ResearchModal extends Modal {
 
     const summaryEl = contentEl.createDiv({ cls: "reallygood-research-summary", text: this.getSummary() });
     const logEl = contentEl.createEl("pre", { cls: "reallygood-research-log" });
-    logEl.setText("Ready.");
+    const updateJobUi = (job) => {
+      logEl.setText(job?.log || "Ready.");
+      const htmlPath = job?.result?.htmlPath || null;
+      lastHtmlPath = htmlPath;
+      if (openHtmlButton) openHtmlButton.setDisabled(!htmlPath);
+      if (startButton) startButton.setDisabled(job?.status === "running");
+    };
+    logEl.setText(this.plugin.getResearchJob()?.log || "Ready.");
 
     const actionsEl = contentEl.createDiv({ cls: "reallygood-research-actions" });
     let lastHtmlPath = null;
     let openHtmlButton = null;
+    let startButton = null;
+    this.unsubscribeJob = this.plugin.subscribeResearchJob(updateJobUi);
     new Setting(actionsEl)
       .addButton((button) =>
         button
@@ -410,7 +477,7 @@ class ResearchModal extends Modal {
           });
       })
       .addButton((button) =>
-        button
+        (startButton = button)
           .setButtonText("Start")
           .setCta()
           .onClick(async () => {
@@ -420,41 +487,29 @@ class ResearchModal extends Modal {
           }
 
           button.setDisabled(true);
-          this.output = `Running...\n${this.getSummary()}\n\n`;
-          logEl.setText(this.output);
+          logEl.setText(`Running...\n${this.getSummary()}\n\n`);
 
           try {
-            const result = await this.plugin.runResearch(this.topic, (line) => {
-              this.output += line;
-              logEl.setText(this.output);
-            });
+            const result = await this.plugin.runResearch(this.topic);
             lastHtmlPath = result.htmlPath;
             if (openHtmlButton) openHtmlButton.setDisabled(!lastHtmlPath);
-            new Notice("ReallyGood Research finished.");
           } catch (error) {
-            logEl.setText(`${this.output}\n${error.message}`);
-            new Notice(error.message);
+            new Notice(error instanceof Error ? error.message : String(error));
           } finally {
             button.setDisabled(false);
           }
         }),
       );
+    updateJobUi(this.plugin.getResearchJob());
   }
 
   onClose() {
+    this.unsubscribeJob?.();
     this.contentEl.empty();
   }
 
   getSummary() {
-    return [
-      `Providers: ${this.plugin.settings.providers}`,
-      `Folder: ${this.plugin.settings.vaultDir || DEFAULT_SETTINGS.vaultDir}`,
-      `HTML: ${this.plugin.settings.html ? "on" : "off"}`,
-      `Mode: ${describeRunMode(this.plugin.settings)}`,
-      "Tavily: Research API key required",
-      `NotebookLM: ${this.plugin.settings.notebooklmMcpCommand || DEFAULT_SETTINGS.notebooklmMcpCommand}`,
-      `AI: ${this.plugin.settings.aiProvider || "none"}`,
-    ].join(" | ");
+    return this.plugin.buildSummary();
   }
 }
 

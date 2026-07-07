@@ -370,6 +370,54 @@ test("Obsidian main.js runs after BRAT installs only manifest, main, and styles"
   assert.doesNotMatch(html, /<pre>/);
 });
 
+test("Obsidian plugin keeps a research job after the modal closes", async () => {
+  const module = { exports: {} };
+  const vaultDir = await mkdtemp(join(tmpdir(), "background-research-"));
+  class Plugin {
+    async loadData() {
+      return {};
+    }
+    async saveData(data) {
+      this.savedData = data;
+    }
+    addRibbonIcon() {}
+    addCommand() {}
+    addSettingTab() {}
+  }
+  class Modal {}
+  class PluginSettingTab {}
+  class Setting {}
+  const Notice = function Notice(message) {
+    return message;
+  };
+  const requireStub = (id) => {
+    if (id === "obsidian") return { Modal, Notice, Plugin, PluginSettingTab, Setting };
+    return require(id);
+  };
+  const source = await read("main.js");
+  Function("require", "module", "exports", source)(requireStub, module, module.exports);
+
+  const PluginClass = module.exports;
+  const plugin = new PluginClass();
+  plugin.app = { vault: { adapter: { getBasePath: () => vaultDir } } };
+  plugin.manifest = { id: "reallygood-research", dir: ".obsidian/plugins/reallygood-research" };
+  await plugin.onload();
+  plugin.settings.mock = true;
+
+  const run = plugin.runResearch("Background modal close smoke");
+  const job = plugin.getResearchJob();
+
+  assert.equal(job.status, "running");
+  assert.match(job.log, /Running/);
+  assert.equal(plugin.runResearch("Second click ignored while running"), run);
+
+  const result = await run;
+  assert.equal(plugin.getResearchJob().status, "finished");
+  assert.equal(plugin.getResearchJob().result.htmlPath, result.htmlPath);
+  assert.match(plugin.getResearchJob().log, /Markdown:/);
+  assert.equal(existsSync(result.markdownPath), true);
+});
+
 test("Obsidian plugin migrates old demo defaults to real Tavily deep research", async () => {
   const module = { exports: {} };
   class Plugin {
