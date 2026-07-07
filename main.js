@@ -8,7 +8,7 @@ const PROVIDER_OPTIONS = [
   ["notebooklm", "NotebookLM MCP"],
   ["tavily", "Tavily"],
 ];
-const SETTINGS_VERSION = 8;
+const SETTINGS_VERSION = 9;
 const AI_CLI_PROVIDERS = {
   codex: { label: "Codex CLI", names: commandNames("codex"), args: "exec -" },
   claude: { label: "Claude Code CLI", names: commandNames("claude"), args: "-p" },
@@ -540,7 +540,7 @@ class ResearchSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("NotebookLM MCP command")
-      .setDesc("Default: notebooklm-mcp. If using the local checkout, use: cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run notebooklm-mcp")
+      .setDesc("Default: notebooklm-mcp. If using a source checkout, use: cd /path/to/notebooklm-cli && uv run notebooklm-mcp")
       .addText((text) =>
         text
           .setPlaceholder("notebooklm-mcp")
@@ -553,7 +553,7 @@ class ResearchSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("NotebookLM login command")
-      .setDesc("Default: nlm login. If using the local checkout, use: cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run nlm login")
+      .setDesc("Default: nlm login. If using a source checkout, use: cd /path/to/notebooklm-cli && uv run nlm login")
       .addText((text) =>
         text
           .setPlaceholder("nlm login")
@@ -699,6 +699,10 @@ function migrateSettings(settings, savedSettings) {
     settings.notebooklmMcpCommand = normalizeLocalNotebookLmCommand(settings.notebooklmMcpCommand, "notebooklm-mcp");
     settings.notebooklmLoginCommand = normalizeLocalNotebookLmCommand(settings.notebooklmLoginCommand, "nlm login");
   }
+  if ((savedSettings.settingsVersion || 0) < 9) {
+    settings.notebooklmMcpCommand = resetOldLocalNotebookLmCommand(settings.notebooklmMcpCommand, "notebooklm-mcp");
+    settings.notebooklmLoginCommand = resetOldLocalNotebookLmCommand(settings.notebooklmLoginCommand, "nlm login");
+  }
   if ((savedSettings.settingsVersion || 0) < 8 && settings.aiProvider === "codex" && !settings.aiCommand) {
     settings.aiProvider = "none";
   }
@@ -718,10 +722,13 @@ function describeRunMode(settings) {
 function normalizeLocalNotebookLmCommand(command, tool) {
   const value = stringValue(command);
   if (!value) return value;
-  return value.replace(
-    "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run ",
-    "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run ",
-  ) || tool;
+  return value || tool;
+}
+
+function resetOldLocalNotebookLmCommand(command, tool) {
+  const value = stringValue(command);
+  if (/\/NoteBookLM\/notebooklm-cli\b/.test(value) && /\buv run\b/.test(value)) return tool;
+  return value || tool;
 }
 
 async function openPathInBrowser(filePath) {

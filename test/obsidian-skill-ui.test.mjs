@@ -430,8 +430,8 @@ test("Obsidian plugin migrates old demo defaults to real Tavily deep research", 
         tavilyKeyless: false,
         aiProvider: "codex",
         aiCommand: "",
-        notebooklmMcpCommand: "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run notebooklm-mcp",
-        notebooklmLoginCommand: "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run nlm login",
+        notebooklmMcpCommand: "cd /Users/example/NoteBookLM/notebooklm-cli && uv run notebooklm-mcp",
+        notebooklmLoginCommand: "cd /Users/example/NoteBookLM/notebooklm-cli && uv run nlm login",
       };
     }
     async saveData(data) {
@@ -464,9 +464,9 @@ test("Obsidian plugin migrates old demo defaults to real Tavily deep research", 
   assert.equal(plugin.settings.mock, false);
   assert.equal(plugin.settings.tavilyKeyless, false);
   assert.equal(plugin.settings.aiProvider, "none");
-  assert.equal(plugin.settings.notebooklmMcpCommand, "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run notebooklm-mcp");
-  assert.equal(plugin.settings.notebooklmLoginCommand, "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run nlm login");
-  assert.equal(plugin.savedData.settingsVersion, 8);
+  assert.equal(plugin.settings.notebooklmMcpCommand, "notebooklm-mcp");
+  assert.equal(plugin.settings.notebooklmLoginCommand, "nlm login");
+  assert.equal(plugin.savedData.settingsVersion, 9);
 });
 
 test("Obsidian plugin migrates saved Codex synthesis back to none", async () => {
@@ -507,7 +507,7 @@ test("Obsidian plugin migrates saved Codex synthesis back to none", async () => 
   await plugin.onload();
 
   assert.equal(plugin.settings.aiProvider, "none");
-  assert.equal(plugin.savedData.settingsVersion, 8);
+  assert.equal(plugin.savedData.settingsVersion, 9);
 });
 
 test("Obsidian plugin can run the configured NotebookLM login command", async () => {
