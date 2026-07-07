@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadEnvFile, runResearchPublish, saveTavilyApiKey, tavilyExtract, tavilyResearch, tavilySearch } from "../src/index.mjs";
+import { loadEnvFile, renderHtml, runResearchPublish, saveTavilyApiKey, tavilyExtract, tavilyResearch, tavilySearch } from "../src/index.mjs";
 
 function installFakeTavilyResearch(report = "# Tavily Research Report\n\nResearch context survived.") {
   const oldFetch = globalThis.fetch;
@@ -85,6 +85,30 @@ test("unknown providers are rejected instead of silently falling back", async ()
       }),
     /Unsupported provider: not-a-provider/,
   );
+});
+
+test("html report navigation uses matching ascii anchors", () => {
+  const html = renderHtml(
+    { topic: "네비게이션 테스트" },
+    [
+      "# AI가 고객 신뢰를 확보할 수 있는가?",
+      "",
+      "## Tavily Research Report",
+      "",
+      "body",
+      "",
+      "## 신뢰 형성을 가로막는 지표",
+      "",
+      "body",
+    ].join("\n"),
+  );
+
+  assert.match(html, /<a href="#ai">AI가 고객 신뢰를 확보할 수 있는가\?<\/a>/);
+  assert.match(html, /<h1 id="ai">AI가 고객 신뢰를 확보할 수 있는가\?<\/h1>/);
+  assert.match(html, /<a href="#tavily-research-report">Tavily Research Report<\/a>/);
+  assert.match(html, /<h2 id="tavily-research-report">Tavily Research Report<\/h2>/);
+  assert.match(html, /<a href="#section-3">신뢰 형성을 가로막는 지표<\/a>/);
+  assert.match(html, /<h2 id="section-3">신뢰 형성을 가로막는 지표<\/h2>/);
 });
 
 test("tavily provider requires an API key for Research API output", async () => {

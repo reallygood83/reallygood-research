@@ -1014,7 +1014,9 @@ function headingId(value, index) {
   const id = String(value || "")
     .toLowerCase()
     .replace(/<[^>]+>/g, "")
-    .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+    .normalize("NFKD")
+    .replace(/[^\x00-\x7F]+/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 80);
   return id || `section-${index + 1}`;
