@@ -44,10 +44,32 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
       new ResearchModal(this.app, this).open();
     });
 
+    this.addRibbonIcon("external-link", "Open ReallyGood HTML report", async () => {
+      try {
+        const htmlPath = await this.openActiveHtmlReport();
+        new Notice(`Opened HTML report: ${htmlPath}`);
+      } catch (error) {
+        new Notice(error instanceof Error ? error.message : String(error));
+      }
+    });
+
     this.addCommand({
       id: "open-research-console",
       name: "Open deep research console",
       callback: () => new ResearchModal(this.app, this).open(),
+    });
+
+    this.addCommand({
+      id: "open-active-html-report",
+      name: "Open active HTML report in browser",
+      callback: async () => {
+        try {
+          const htmlPath = await this.openActiveHtmlReport();
+          new Notice(`Opened HTML report: ${htmlPath}`);
+        } catch (error) {
+          new Notice(error instanceof Error ? error.message : String(error));
+        }
+      },
     });
 
     this.addCommand({
@@ -161,6 +183,15 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
   async openHtmlReport(htmlPath) {
     if (!htmlPath) throw new Error("No HTML report has been generated yet.");
     await openPathInBrowser(htmlPath);
+  }
+
+  async openActiveHtmlReport() {
+    const file = this.app.workspace?.getActiveFile?.();
+    if (!file?.path) throw new Error("Open a generated Markdown or HTML report first.");
+    const htmlPath = getHtmlPathForVaultFile(this.getVaultBasePath(), file.path);
+    if (!existsSync(htmlPath)) throw new Error(`No matching HTML report found: ${htmlPath}`);
+    await this.openHtmlReport(htmlPath);
+    return htmlPath;
   }
 
   async saveSettings() {
@@ -624,6 +655,13 @@ async function openPathInBrowser(filePath) {
   const { shell } = require("electron");
   const error = await shell.openPath(filePath);
   if (error) throw new Error(error);
+}
+
+function getHtmlPathForVaultFile(vaultBasePath, vaultPath) {
+  const localPath = join(vaultBasePath, vaultPath);
+  if (/\.html?$/i.test(localPath)) return localPath;
+  if (/\.md$/i.test(localPath)) return localPath.replace(/\.md$/i, ".html");
+  return `${localPath}.html`;
 }
 
 const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily"]);

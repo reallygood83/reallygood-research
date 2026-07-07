@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -26,6 +26,7 @@ test("Obsidian main.js is BRAT-standalone and registers a runnable research cons
   assert.match(source, /"run"/);
   assert.match(source, /addCommand/);
   assert.match(source, /addRibbonIcon/);
+  assert.match(source, /external-link/);
   assert.match(source, /addSettingTab/);
   assert.match(source, /runResearchPublish/);
   assert.match(source, /saveTavilyApiKey/);
@@ -57,6 +58,8 @@ test("Obsidian main.js is BRAT-standalone and registers a runnable research cons
   assert.match(source, /Copy command/);
   assert.match(source, /Open HTML/);
   assert.match(source, /openPath/);
+  assert.match(source, /open-active-html-report/);
+  assert.match(source, /openActiveHtmlReport/);
   assert.match(source, /getSummary/);
   assert.match(source, /setProviderEnabled/);
 });
@@ -106,6 +109,61 @@ test("Obsidian plugin opens generated HTML through Electron shell", async () => 
   await plugin.openHtmlReport("/tmp/report.html");
 
   assert.equal(openedPath, "/tmp/report.html");
+});
+
+test("Obsidian plugin opens matching HTML for the active Markdown report", async () => {
+  const module = { exports: {} };
+  const vaultDir = await mkdtemp(join(tmpdir(), "active-report-"));
+  await mkdir(join(vaultDir, "000-research"), { recursive: true });
+  const htmlPath = join(vaultDir, "000-research", "report.html");
+  await writeFile(htmlPath, "<html><body>report</body></html>");
+  let openedPath = null;
+  class Plugin {
+    async loadData() {
+      return {};
+    }
+    async saveData(data) {
+      this.savedData = data;
+    }
+    addRibbonIcon() {}
+    addCommand() {}
+    addSettingTab() {}
+  }
+  class Modal {}
+  class PluginSettingTab {}
+  class Setting {}
+  const Notice = function Notice(message) {
+    return message;
+  };
+  const requireStub = (id) => {
+    if (id === "obsidian") return { Modal, Notice, Plugin, PluginSettingTab, Setting };
+    if (id === "electron") {
+      return {
+        shell: {
+          async openPath(path) {
+            openedPath = path;
+            return "";
+          },
+        },
+      };
+    }
+    return require(id);
+  };
+  const source = await read("main.js");
+  Function("require", "module", "exports", source)(requireStub, module, module.exports);
+
+  const PluginClass = module.exports;
+  const plugin = new PluginClass();
+  plugin.app = {
+    vault: { adapter: { getBasePath: () => vaultDir } },
+    workspace: { getActiveFile: () => ({ path: "000-research/report.md" }) },
+  };
+  plugin.manifest = { id: "reallygood-research", dir: ".obsidian/plugins/reallygood-research" };
+  await plugin.onload();
+  const openedReport = await plugin.openActiveHtmlReport();
+
+  assert.equal(openedReport, htmlPath);
+  assert.equal(openedPath, htmlPath);
 });
 
 test("Obsidian main.js runs after BRAT installs only manifest, main, and styles", async () => {
