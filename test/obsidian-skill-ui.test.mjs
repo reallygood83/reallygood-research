@@ -38,14 +38,16 @@ test("Obsidian main.js is BRAT-standalone and registers a runnable research cons
   assert.match(source, /vaultDir: "\."/);
   assert.match(source, /--html/);
   assert.match(source, /--mock/);
-  assert.match(source, /--tavily-keyless/);
+  assert.doesNotMatch(source, /--tavily-keyless/);
+  assert.doesNotMatch(source, /setName\("Tavily keyless"\)/);
   assert.match(source, /AI provider/);
   assert.match(source, /aiCommand/);
   assert.match(source, /Antigravity CLI/);
   assert.match(source, /AI_CLI_PROVIDERS/);
   assert.match(source, /\.nvm/);
   assert.match(source, /shellPath/);
-  assert.match(source, /Tavily search \+ AI synthesis/);
+  assert.match(source, /Tavily deep research/);
+  assert.match(source, /Tavily Research requires TAVILY_API_KEY/);
   assert.match(source, /NotebookLM deep research/);
   assert.match(source, /NotebookLM MCP command/);
   assert.match(source, /NotebookLM login command/);
@@ -255,7 +257,7 @@ test("Obsidian plugin migrates old demo defaults to real Tavily deep research", 
 
   assert.equal(plugin.settings.providers, "tavily");
   assert.equal(plugin.settings.mock, false);
-  assert.equal(plugin.settings.tavilyKeyless, true);
+  assert.equal(plugin.settings.tavilyKeyless, false);
   assert.equal(plugin.settings.aiProvider, "none");
   assert.equal(plugin.settings.notebooklmMcpCommand, "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run notebooklm-mcp");
   assert.equal(plugin.settings.notebooklmLoginCommand, "cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && /opt/homebrew/bin/uv run nlm login");

@@ -15,12 +15,13 @@ The plugin is desktop-only because it writes files directly into your local vaul
 
 ### Tavily only
 
-This is the easiest path and works immediately after BRAT install.
+This is the easiest path after saving a Tavily API key.
 
-1. Keep `Providers` as `tavily`.
-2. Keep `Tavily keyless` on for a quick trial.
-3. Choose an output folder.
-4. Run a research topic.
+1. Paste a Tavily API key into `Tavily API key`.
+2. Click `Save key`.
+3. Keep `Providers` as `tavily`.
+4. Choose an output folder.
+5. Run a research topic.
 
 The plugin writes:
 
@@ -28,7 +29,7 @@ The plugin writes:
 - an optional HTML report
 - JSON history under `.deep-research-publisher/`
 
-For better limits and reliability, paste a Tavily API key into `Tavily API key`, click `Save key`, then turn `Tavily keyless` off. The key is saved to `~/.reallygood-research.env`, not to Obsidian settings.
+The key is saved to `~/.reallygood-research.env`, not to Obsidian settings. Tavily reports use the Tavily Research API; keyless Search output is not used for research notes.
 
 ### NotebookLM
 
@@ -95,8 +96,7 @@ node bin/deep-research.mjs run \
   --topic "Agentic AI vertical market" \
   --providers notebooklm,tavily \
   --vault-dir "/path/to/Obsidian/Vault/Research" \
-  --html \
-  --tavily-keyless
+  --html
 ```
 
 Outputs:
@@ -105,7 +105,7 @@ Outputs:
 - optional HTML report
 - JSON history under `.deep-research-publisher/`
 
-Use `--mock` only for local test output. Tavily live mode uses `TAVILY_API_KEY`, or `--tavily-keyless` for Tavily's keyless access mode. NotebookLM mode uses the `notebooklm-mcp` stdio server from `notebooklm-cli`.
+Use `--mock` only for local test output. Tavily mode always uses the Tavily Research API and requires `TAVILY_API_KEY`. NotebookLM mode uses the `notebooklm-mcp` stdio server from `notebooklm-cli`.
 
 NotebookLM example with a custom MCP command:
 
@@ -134,24 +134,12 @@ node bin/deep-research.mjs run \
   --providers tavily \
   --vault-dir "/path/to/Obsidian/Vault/Research" \
   --html \
-  --tavily-keyless \
   --ai-provider claude
 ```
 
 Supported built-in CLI providers are `codex`, `claude`, `gemini`, `grok`, and `antigravity`. The plugin resolves common Homebrew, local-bin, npm-global, Bun, Cargo, and NVM paths so Obsidian can find CLIs that your terminal can use. For any other logged-in CLI, use `--ai-provider custom --ai-command "<command>"`. The research prompt is passed through stdin.
 
 In the Obsidian plugin, choose `AI provider` from the console or settings. This uses your existing local CLI login/OAuth session; it does not ask for or store AI provider API keys.
-
-For a lightweight Tavily trial without a key:
-
-```sh
-node bin/deep-research.mjs run \
-  --topic "latest AI search tools" \
-  --providers tavily \
-  --vault-dir "/path/to/Obsidian/Vault/Research" \
-  --html \
-  --tavily-keyless
-```
 
 ## MCP
 
@@ -181,4 +169,4 @@ Example MCP server config shape:
 }
 ```
 
-`tavily_search` defaults to `searchDepth: "advanced"`, `maxResults: 5`, `chunksPerSource: 3`, and `includeAnswer: true`, matching Tavily's agent-oriented guidance for stronger source evidence. Keyless mode works for Search and Extract; Tavily Crawl, Map, and Research require an API key.
+`run_research` uses Tavily Research API output for saved reports. `tavily_search` and `tavily_extract` remain utility MCP tools, but they also require the configured Tavily API key; keyless mode is not supported.

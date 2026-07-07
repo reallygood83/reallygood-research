@@ -16,7 +16,7 @@ try {
   } else {
     throw new Error(
         "Usage: reallygood-research <run|setup|mcp>\n" +
-        "  run --topic <topic> --providers <list> --vault-dir <dir> [--html] [--mock] [--tavily-keyless] [--ai-provider <name>] [--ai-command <command>] [--notebooklm-mcp-command <command>]\n" +
+        "  run --topic <topic> --providers <list> --vault-dir <dir> [--html] [--mock] [--ai-provider <name>] [--ai-command <command>] [--notebooklm-mcp-command <command>]\n" +
         "  setup tavily [--env-path <path>]\n" +
         "  mcp",
     );
@@ -78,7 +78,7 @@ async function handleJsonRpc(line) {
       send(message.id, {
         protocolVersion: message.params?.protocolVersion || "2025-06-18",
         capabilities: { tools: {} },
-        serverInfo: { name: "reallygood-research", version: "0.1.5" },
+        serverInfo: { name: "reallygood-research", version: "0.1.19" },
       });
     } else if (message.method === "tools/list") {
       send(message.id, { tools: tools() });
@@ -132,7 +132,6 @@ function tools() {
           agent: { type: "string" },
           html: { type: "boolean" },
           mock: { type: "boolean" },
-          tavilyKeyless: { type: "boolean" },
           envFile: { type: "string" },
           searchDepth: { type: "string", enum: ["ultra-fast", "fast", "basic", "advanced"] },
           maxResults: { type: "number" },
@@ -160,7 +159,7 @@ function tools() {
     },
     {
       name: "tavily_search",
-      description: "Search the web with Tavily Search. Keyless mode supports Search without an API key.",
+      description: "Search the web with Tavily Search using the configured Tavily API key.",
       inputSchema: {
         type: "object",
         required: ["query"],
@@ -170,14 +169,13 @@ function tools() {
           maxResults: { type: "number" },
           chunksPerSource: { type: "number" },
           includeAnswer: { type: "boolean" },
-          tavilyKeyless: { type: "boolean" },
           envFile: { type: "string" },
         },
       },
     },
     {
       name: "tavily_extract",
-      description: "Extract clean content from one or more URLs with Tavily Extract. Keyless mode supports Extract without an API key.",
+      description: "Extract clean content from one or more URLs with Tavily Extract using the configured Tavily API key.",
       inputSchema: {
         type: "object",
         properties: {
@@ -187,7 +185,6 @@ function tools() {
           format: { type: "string", enum: ["markdown", "text"] },
           includeImages: { type: "boolean" },
           includeFavicon: { type: "boolean" },
-          tavilyKeyless: { type: "boolean" },
           envFile: { type: "string" },
         },
       },
@@ -215,7 +212,10 @@ function parseArgs(tokens) {
   const options = {};
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
-    if (token === "--html" || token === "--mock" || token === "--tavily-keyless") {
+    if (token === "--tavily-keyless") {
+      throw new Error("--tavily-keyless is no longer supported for research output. Save a Tavily API key with `reallygood-research setup tavily`.");
+    }
+    if (token === "--html" || token === "--mock") {
       options[toCamel(token.slice(2))] = true;
       continue;
     }

@@ -13,7 +13,7 @@ const AI_CLI_PROVIDERS = {
 
 export const requestSchema = {
   required: ["topic", "providers", "vaultDir"],
-  optional: ["agent", "sourceFile", "html", "mock", "tavilyKeyless", "envFile", "searchDepth", "maxResults", "chunksPerSource", "includeAnswer", "aiProvider", "aiCommand", "notebooklmMcpCommand", "notebooklmMode", "notebooklmMaxWait"],
+  optional: ["agent", "sourceFile", "html", "mock", "envFile", "searchDepth", "maxResults", "chunksPerSource", "includeAnswer", "aiProvider", "aiCommand", "notebooklmMcpCommand", "notebooklmMode", "notebooklmMaxWait"],
   providers: [...SUPPORTED_PROVIDERS],
 };
 
@@ -38,6 +38,9 @@ export function validateResearchRequest(input) {
       throw new Error(`Unsupported provider: ${provider}`);
     }
   }
+  if (providers.includes("tavily") && input.tavilyKeyless) {
+    throw new Error("Tavily provider requires a Tavily API key and Research API; keyless Search is not supported for research output");
+  }
 
   return {
     topic,
@@ -47,7 +50,7 @@ export function validateResearchRequest(input) {
     vaultDir,
     html: Boolean(input.html),
     mock: Boolean(input.mock),
-    tavilyKeyless: Boolean(input.tavilyKeyless),
+    tavilyKeyless: false,
     envFile: stringValue(input.envFile) || defaultEnvFile(),
     searchDepth: stringValue(input.searchDepth) || "advanced",
     maxResults: numberValue(input.maxResults, 5),
@@ -422,49 +425,23 @@ function renderNotebookLmContent(start, status) {
 }
 
 async function runTavilyProvider(request) {
-  if (!request.tavilyKeyless) {
-    const research = await tavilyResearch({
-      input: request.topic,
-      envFile: request.envFile,
-      model: "mini",
-      outputLength: "long",
-    });
-    return {
-      name: "tavily",
-      mode: "research",
-      metadata: {
-        topic: request.topic,
-        requestId: research.request_id || null,
-        status: research.status || null,
-        credits: research.usage?.credits ?? null,
-        model: research.model || "mini",
-      },
-      content: renderTavilyResearchContent(research),
-    };
-  }
-
-  const payload = await tavilySearch({
-    query: request.topic,
-    searchDepth: request.searchDepth,
-    maxResults: request.maxResults,
-    chunksPerSource: request.chunksPerSource,
-    includeAnswer: request.includeAnswer,
-    tavilyKeyless: request.tavilyKeyless,
+  const research = await tavilyResearch({
+    input: request.topic,
     envFile: request.envFile,
+    model: "mini",
+    outputLength: "long",
   });
-
-  const results = Array.isArray(payload.results) ? payload.results : [];
   return {
     name: "tavily",
-    mode: request.tavilyKeyless ? "keyless" : "live",
+    mode: "research",
     metadata: {
       topic: request.topic,
-      resultCount: results.length,
-      requestId: payload.request_id || null,
-      credits: payload.usage?.credits ?? null,
-      searchDepth: request.searchDepth,
+      requestId: research.request_id || null,
+      status: research.status || null,
+      credits: research.usage?.credits ?? null,
+      model: research.model || "mini",
     },
-    content: renderTavilyContent(payload, results),
+    content: renderTavilyResearchContent(research),
   };
 }
 
@@ -472,7 +449,7 @@ export async function tavilyResearch(input) {
   const query = stringValue(input?.input || input?.query);
   if (!query) throw new Error("Missing required option: input");
   await loadEnvFile(stringValue(input.envFile) || defaultEnvFile());
-  if (!process.env.TAVILY_API_KEY) throw new Error("Tavily Research requires TAVILY_API_KEY or --tavily-keyless");
+  if (!process.env.TAVILY_API_KEY) throw new Error("Tavily Research requires TAVILY_API_KEY. Save one with `reallygood-research setup tavily`.");
 
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${process.env.TAVILY_API_KEY}` };
   const createResponse = await fetch("https://api.tavily.com/research", {
@@ -516,14 +493,15 @@ async function pollTavilyResearch(requestId, headers, maxWaitSeconds) {
 export async function tavilySearch(input) {
   const query = stringValue(input?.query);
   if (!query) throw new Error("Missing required option: query");
+  if (input.tavilyKeyless) {
+    throw new Error("Tavily keyless mode is not supported. Save TAVILY_API_KEY with `reallygood-research setup tavily`.");
+  }
   await loadEnvFile(stringValue(input.envFile) || defaultEnvFile());
   const headers = { "Content-Type": "application/json" };
-  if (input.tavilyKeyless) {
-    headers["X-Tavily-Access-Mode"] = "keyless";
-  } else if (process.env.TAVILY_API_KEY) {
+  if (process.env.TAVILY_API_KEY) {
     headers.Authorization = `Bearer ${process.env.TAVILY_API_KEY}`;
   } else {
-    throw new Error("Tavily provider requires TAVILY_API_KEY or --tavily-keyless; rerun with --mock for local mock mode");
+    throw new Error("Tavily search requires TAVILY_API_KEY. Save one with `reallygood-research setup tavily`.");
   }
 
   const response = await fetch("https://api.tavily.com/search", {
@@ -548,14 +526,15 @@ export async function tavilySearch(input) {
 export async function tavilyExtract(input) {
   const urls = Array.isArray(input?.urls) ? input.urls.filter(Boolean) : [stringValue(input?.url)].filter(Boolean);
   if (!urls.length) throw new Error("Missing required option: url or urls");
+  if (input.tavilyKeyless) {
+    throw new Error("Tavily keyless mode is not supported. Save TAVILY_API_KEY with `reallygood-research setup tavily`.");
+  }
   await loadEnvFile(stringValue(input.envFile) || defaultEnvFile());
   const headers = { "Content-Type": "application/json" };
-  if (input.tavilyKeyless) {
-    headers["X-Tavily-Access-Mode"] = "keyless";
-  } else if (process.env.TAVILY_API_KEY) {
+  if (process.env.TAVILY_API_KEY) {
     headers.Authorization = `Bearer ${process.env.TAVILY_API_KEY}`;
   } else {
-    throw new Error("Tavily extract requires TAVILY_API_KEY or tavilyKeyless=true");
+    throw new Error("Tavily extract requires TAVILY_API_KEY. Save one with `reallygood-research setup tavily`.");
   }
 
   const response = await fetch("https://api.tavily.com/extract", {
@@ -840,8 +819,7 @@ function renderMarkdown(request, providerResults, source, now, synthesis) {
 
 function providerTitle(provider) {
   if (provider.name === "notebooklm") return "## NotebookLM Deep Research";
-  if (provider.name === "tavily" && provider.mode === "research") return "## Tavily Deep Research";
-  if (provider.name === "tavily") return "## Tavily Web Sources";
+  if (provider.name === "tavily") return "## Tavily Deep Research";
   return `## ${provider.name} Results`;
 }
 
@@ -855,7 +833,6 @@ function describeResearchMode(providerResults, synthesis) {
   const providers = providerResults.map((provider) => provider.name);
   if (providers.includes("notebooklm")) return "NotebookLM deep research";
   if (providerResults.some((provider) => provider.name === "tavily" && provider.mode === "research")) return "Tavily deep research";
-  if (providers.includes("tavily")) return synthesis?.content ? "Tavily search + AI synthesis" : "Tavily search";
   return "research";
 }
 

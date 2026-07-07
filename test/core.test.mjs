@@ -6,6 +6,35 @@ import test from "node:test";
 
 import { loadEnvFile, runResearchPublish, saveTavilyApiKey, tavilyExtract, tavilyResearch, tavilySearch } from "../src/index.mjs";
 
+function installFakeTavilyResearch(report = "# Tavily Research Report\n\nResearch context survived.") {
+  const oldFetch = globalThis.fetch;
+  const oldKey = process.env.TAVILY_API_KEY;
+  process.env.TAVILY_API_KEY = "tvly-test-key";
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/research")) {
+      return { ok: true, json: async () => ({ request_id: "research-test", status: "pending", model: "mini" }) };
+    }
+    if (String(url).endsWith("/research/research-test")) {
+      return {
+        ok: true,
+        json: async () => ({
+          request_id: "research-test",
+          status: "completed",
+          model: "mini",
+          report,
+          sources: [{ title: "Source", url: "https://example.com", content: "Evidence" }],
+        }),
+      };
+    }
+    throw new Error(`unexpected url ${url}`);
+  };
+  return () => {
+    globalThis.fetch = oldFetch;
+    if (oldKey === undefined) delete process.env.TAVILY_API_KEY;
+    else process.env.TAVILY_API_KEY = oldKey;
+  };
+}
+
 test("mock providers save markdown, html, and history metadata", async () => {
   const dir = await mkdtemp(join(tmpdir(), "drp-core-"));
   const sourceFile = join(dir, "source.md");
@@ -58,7 +87,7 @@ test("unknown providers are rejected instead of silently falling back", async ()
   );
 });
 
-test("tavily keyless is explicit opt-in", async () => {
+test("tavily provider requires an API key for Research API output", async () => {
   const dir = await mkdtemp(join(tmpdir(), "drp-no-env-"));
   const oldKey = process.env.TAVILY_API_KEY;
   delete process.env.TAVILY_API_KEY;
@@ -71,7 +100,7 @@ test("tavily keyless is explicit opt-in", async () => {
           vaultDir: dir,
           envFile: join(dir, ".missing-env"),
         }),
-      /TAVILY_API_KEY or --tavily-keyless/,
+      /Tavily Research requires TAVILY_API_KEY/,
     );
   } finally {
     if (oldKey === undefined) delete process.env.TAVILY_API_KEY;
@@ -92,32 +121,25 @@ test("tavily api key can be saved and loaded from local env file", async () => {
   assert.equal(process.env.TAVILY_API_KEY, "tvly-test-key");
 });
 
-test("tavily extract requires explicit key or keyless mode", async () => {
+test("tavily extract requires an API key", async () => {
   const dir = await mkdtemp(join(tmpdir(), "drp-no-extract-env-"));
   delete process.env.TAVILY_API_KEY;
   await assert.rejects(
     () => tavilyExtract({ url: "https://example.com", envFile: join(dir, ".missing-env") }),
-    /Tavily extract requires TAVILY_API_KEY or tavilyKeyless=true/,
+    /Tavily extract requires TAVILY_API_KEY/,
   );
 });
 
-test("tavily keyless overrides a stale env key when explicitly selected", async () => {
+test("tavily keyless mode is rejected", async () => {
   const oldFetch = globalThis.fetch;
   const oldKey = process.env.TAVILY_API_KEY;
-  let headers = null;
   process.env.TAVILY_API_KEY = "tvly-stale-test-key";
-  globalThis.fetch = async (_url, options) => {
-    headers = options.headers;
-    return {
-      ok: true,
-      json: async () => ({ results: [] }),
-    };
-  };
 
   try {
-    await tavilySearch({ query: "keyless wins", tavilyKeyless: true });
-    assert.equal(headers["X-Tavily-Access-Mode"], "keyless");
-    assert.equal(headers.Authorization, undefined);
+    await assert.rejects(
+      () => tavilySearch({ query: "keyless rejected", tavilyKeyless: true }),
+      /Tavily keyless mode is not supported/,
+    );
   } finally {
     globalThis.fetch = oldFetch;
     if (oldKey === undefined) delete process.env.TAVILY_API_KEY;
@@ -248,16 +270,7 @@ process.stdin.on("data", (chunk) => {
 });
 
 test("custom local AI CLI can synthesize provider results", async () => {
-  const oldFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({
-    ok: true,
-    json: async () => ({
-      answer: "Source answer",
-      results: [{ title: "Source", url: "https://example.com", content: "Evidence" }],
-      usage: { credits: 1 },
-      request_id: "test-request",
-    }),
-  });
+  const restore = installFakeTavilyResearch("# Source answer\n\nEvidence for synthesis.");
 
   try {
     const dir = await mkdtemp(join(tmpdir(), "drp-ai-"));
@@ -266,7 +279,6 @@ test("custom local AI CLI can synthesize provider results", async () => {
       topic: "AI synthesis",
       providers: "tavily",
       vaultDir: dir,
-      tavilyKeyless: true,
       aiProvider: "custom",
       aiCommand: command,
     });
@@ -277,20 +289,12 @@ test("custom local AI CLI can synthesize provider results", async () => {
     assert.doesNotMatch(markdown, /Command:/);
     assert.match(markdown, /status: "synthesized"/);
   } finally {
-    globalThis.fetch = oldFetch;
+    restore();
   }
 });
 
 test("AI CLI failure is recorded without discarding research outputs", async () => {
-  const oldFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({
-    ok: true,
-    json: async () => ({
-      answer: "Search survived",
-      results: [{ title: "Source", url: "https://example.com", content: "Evidence" }],
-      request_id: "ai-fail-test",
-    }),
-  });
+  const restore = installFakeTavilyResearch("# Research survived\n\nEvidence remains available.");
 
   try {
     const dir = await mkdtemp(join(tmpdir(), "drp-ai-fail-"));
@@ -298,14 +302,13 @@ test("AI CLI failure is recorded without discarding research outputs", async () 
       topic: "AI failure should not block Tavily",
       providers: "tavily",
       vaultDir: dir,
-      tavilyKeyless: true,
       aiProvider: "custom",
       aiCommand: "__reallygood_missing_ai_cli__",
       html: true,
     });
 
     const markdown = await readFile(result.markdownPath, "utf8");
-    assert.match(markdown, /Search survived/);
+    assert.match(markdown, /Research survived/);
     assert.doesNotMatch(markdown, /## AI Synthesis/);
     assert.doesNotMatch(markdown, /__reallygood_missing_ai_cli__/);
     assert.doesNotMatch(markdown, /not found|Command failed/i);
@@ -313,21 +316,13 @@ test("AI CLI failure is recorded without discarding research outputs", async () 
     assert.match(history.synthesis.error, /not found|Command failed/i);
     assert.match(await readFile(result.htmlPath, "utf8"), /AI failure should not block Tavily/);
   } finally {
-    globalThis.fetch = oldFetch;
+    restore();
   }
 });
 
 test("built-in AI providers resolve local-bin CLI paths", async () => {
-  const oldFetch = globalThis.fetch;
+  const restore = installFakeTavilyResearch("# Search context\n\nEvidence from research.");
   const oldPath = process.env.PATH;
-  globalThis.fetch = async () => ({
-    ok: true,
-    json: async () => ({
-      answer: "Search context",
-      results: [{ title: "Source", url: "https://example.com", content: "Evidence" }],
-      request_id: "local-bin-ai",
-    }),
-  });
 
   try {
     const dir = await mkdtemp(join(tmpdir(), "drp-ai-path-"));
@@ -342,7 +337,6 @@ test("built-in AI providers resolve local-bin CLI paths", async () => {
       topic: "Local CLI path",
       providers: "tavily",
       vaultDir: join(dir, "vault"),
-      tavilyKeyless: true,
       aiProvider: "claude",
     });
 
@@ -353,6 +347,6 @@ test("built-in AI providers resolve local-bin CLI paths", async () => {
     assert.match(history.synthesis.command, new RegExp(fakeClaude.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   } finally {
     process.env.PATH = oldPath;
-    globalThis.fetch = oldFetch;
+    restore();
   }
 });

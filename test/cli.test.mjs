@@ -60,7 +60,7 @@ test("run command prints and creates markdown and html outputs", async () => {
   const markdown = await readFile(markdownPath, "utf8");
   assert.match(markdown, /tags:\n  - research\n  - reallygood-research/);
   assert.match(markdown, /research_mode: "NotebookLM deep research"/);
-  assert.match(markdown, /## Tavily Web Sources/);
+  assert.match(markdown, /## Tavily Deep Research/);
   assert.doesNotMatch(markdown, /Research status/);
   assert.doesNotMatch(markdown, /Provider metadata/);
   const html = await readFile(htmlPath, "utf8");
