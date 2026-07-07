@@ -71,6 +71,10 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
     return saveTavilyApiKey(apiKey);
   }
 
+  async testTavilyApiKey(apiKey) {
+    return testTavilyApiKey(apiKey);
+  }
+
   buildCommandPreview(topic) {
     const args = [
       "node",
@@ -287,8 +291,15 @@ class ResearchSettingTab extends PluginSettingTab {
         button.setButtonText("Save key").onClick(async () => {
           try {
             const result = await this.plugin.saveTavilyApiKey(tavilyApiKey);
+            let suffix = "";
+            try {
+              await this.plugin.testTavilyApiKey(tavilyApiKey);
+              suffix = " and verified";
+            } catch (error) {
+              suffix = `. Saved locally, but test failed: ${error instanceof Error ? error.message : String(error)}`;
+            }
             tavilyApiKey = "";
-            new Notice(`Saved Tavily API key to ${result.envFile}`);
+            new Notice(`Saved Tavily API key to ${result.envFile}${suffix}`);
           } catch (error) {
             new Notice(error instanceof Error ? error.message : String(error));
           }
@@ -433,7 +444,7 @@ async function runTavilyProvider(request) {
   const results = Array.isArray(payload.results) ? payload.results : [];
   return {
     name: "tavily",
-    mode: process.env.TAVILY_API_KEY ? "live" : "keyless",
+    mode: request.tavilyKeyless ? "keyless" : "live",
     metadata: {
       topic: request.topic,
       resultCount: results.length,
@@ -450,10 +461,10 @@ async function tavilySearch(input) {
   if (!query) throw new Error("Missing required option: query");
   await loadEnvFile(stringValue(input.envFile) || defaultEnvFile());
   const headers = { "Content-Type": "application/json" };
-  if (process.env.TAVILY_API_KEY) {
-    headers.Authorization = `Bearer ${process.env.TAVILY_API_KEY}`;
-  } else if (input.tavilyKeyless) {
+  if (input.tavilyKeyless) {
     headers["X-Tavily-Access-Mode"] = "keyless";
+  } else if (process.env.TAVILY_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.TAVILY_API_KEY}`;
   } else {
     throw new Error("Tavily provider requires TAVILY_API_KEY or Tavily keyless; rerun with Mock mode for local mock mode");
   }
@@ -615,6 +626,20 @@ async function saveTavilyApiKey(apiKey, envFile = defaultEnvFile()) {
   await saveEnvValues({ TAVILY_API_KEY: key }, envFile);
   process.env.TAVILY_API_KEY = key;
   return { envFile };
+}
+
+async function testTavilyApiKey(apiKey) {
+  const key = stringValue(apiKey);
+  if (!key) throw new Error("Missing Tavily API key");
+  const response = await fetch("https://api.tavily.com/usage", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`Tavily API key test failed (${response.status}): ${payload.error || payload.message || response.statusText}`);
+  }
+  return payload;
 }
 
 async function saveEnvValues(values, envFile) {

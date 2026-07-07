@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadEnvFile, runResearchPublish, saveTavilyApiKey, tavilyExtract } from "../src/index.mjs";
+import { loadEnvFile, runResearchPublish, saveTavilyApiKey, tavilyExtract, tavilySearch } from "../src/index.mjs";
 
 test("mock providers save markdown, html, and history metadata", async () => {
   const dir = await mkdtemp(join(tmpdir(), "drp-core-"));
@@ -80,6 +80,30 @@ test("tavily extract requires explicit key or keyless mode", async () => {
     () => tavilyExtract({ url: "https://example.com" }),
     /Tavily extract requires TAVILY_API_KEY or tavilyKeyless=true/,
   );
+});
+
+test("tavily keyless overrides a stale env key when explicitly selected", async () => {
+  const oldFetch = globalThis.fetch;
+  const oldKey = process.env.TAVILY_API_KEY;
+  let headers = null;
+  process.env.TAVILY_API_KEY = "tvly-stale-test-key";
+  globalThis.fetch = async (_url, options) => {
+    headers = options.headers;
+    return {
+      ok: true,
+      json: async () => ({ results: [] }),
+    };
+  };
+
+  try {
+    await tavilySearch({ query: "keyless wins", tavilyKeyless: true });
+    assert.equal(headers["X-Tavily-Access-Mode"], "keyless");
+    assert.equal(headers.Authorization, undefined);
+  } finally {
+    globalThis.fetch = oldFetch;
+    if (oldKey === undefined) delete process.env.TAVILY_API_KEY;
+    else process.env.TAVILY_API_KEY = oldKey;
+  }
 });
 
 test("custom local AI CLI can synthesize provider results", async () => {

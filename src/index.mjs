@@ -219,7 +219,7 @@ async function runTavilyProvider(request) {
   const results = Array.isArray(payload.results) ? payload.results : [];
   return {
     name: "tavily",
-    mode: process.env.TAVILY_API_KEY ? "live" : "keyless",
+    mode: request.tavilyKeyless ? "keyless" : "live",
     metadata: {
       topic: request.topic,
       resultCount: results.length,
@@ -236,10 +236,10 @@ export async function tavilySearch(input) {
   if (!query) throw new Error("Missing required option: query");
   await loadEnvFile(stringValue(input.envFile) || defaultEnvFile());
   const headers = { "Content-Type": "application/json" };
-  if (process.env.TAVILY_API_KEY) {
-    headers.Authorization = `Bearer ${process.env.TAVILY_API_KEY}`;
-  } else if (input.tavilyKeyless) {
+  if (input.tavilyKeyless) {
     headers["X-Tavily-Access-Mode"] = "keyless";
+  } else if (process.env.TAVILY_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.TAVILY_API_KEY}`;
   } else {
     throw new Error("Tavily provider requires TAVILY_API_KEY or --tavily-keyless; rerun with --mock for local mock mode");
   }
@@ -268,10 +268,10 @@ export async function tavilyExtract(input) {
   if (!urls.length) throw new Error("Missing required option: url or urls");
   await loadEnvFile(stringValue(input.envFile) || defaultEnvFile());
   const headers = { "Content-Type": "application/json" };
-  if (process.env.TAVILY_API_KEY) {
-    headers.Authorization = `Bearer ${process.env.TAVILY_API_KEY}`;
-  } else if (input.tavilyKeyless) {
+  if (input.tavilyKeyless) {
     headers["X-Tavily-Access-Mode"] = "keyless";
+  } else if (process.env.TAVILY_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.TAVILY_API_KEY}`;
   } else {
     throw new Error("Tavily extract requires TAVILY_API_KEY or tavilyKeyless=true");
   }
