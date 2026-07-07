@@ -57,7 +57,10 @@ test("run command prints and creates markdown and html outputs", async () => {
   const htmlPath = result.stdout.match(/HTML: (.+\.html)/)[1].trim();
   assert.equal(existsSync(markdownPath), true);
   assert.equal(existsSync(htmlPath), true);
-  assert.match(await readFile(markdownPath, "utf8"), /provider: tavily/);
+  const markdown = await readFile(markdownPath, "utf8");
+  assert.match(markdown, /tags:\n  - research\n  - reallygood-research/);
+  assert.match(markdown, /research_mode: "NotebookLM deep research"/);
+  assert.match(markdown, /## tavily Results/);
   assert.match(await readFile(htmlPath, "utf8"), /Agentic AI vertical market/);
 });
 

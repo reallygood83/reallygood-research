@@ -26,7 +26,10 @@ test("mock providers save markdown, html, and history metadata", async () => {
   assert.equal(result.providers.length, 2);
   assert.equal(result.providers[0].name, "notebooklm");
   assert.equal(result.providers[0].mode, "mock");
-  assert.match(await readFile(result.markdownPath, "utf8"), /provider: notebooklm/);
+  const markdown = await readFile(result.markdownPath, "utf8");
+  assert.match(markdown, /type: "research-note"/);
+  assert.match(markdown, /providers:\n  - "notebooklm"\n  - "tavily"/);
+  assert.match(markdown, /## notebooklm Results/);
   assert.match(await readFile(result.htmlPath, "utf8"), /Agentic AI vertical market/);
 
   const history = JSON.parse(await readFile(result.historyPath, "utf8"));
@@ -186,7 +189,7 @@ process.stdin.on("data", (chunk) => {
   const markdown = await readFile(result.markdownPath, "utf8");
   assert.equal(result.providers[0].name, "notebooklm");
   assert.equal(result.providers[0].mode, "mcp");
-  assert.match(markdown, /mode: mcp/);
+  assert.match(markdown, /> Mode: mcp/);
   assert.match(markdown, /NotebookLM deep research report/);
   assert.match(markdown, /Notebook source/);
 });
@@ -218,7 +221,8 @@ test("custom local AI CLI can synthesize provider results", async () => {
     const markdown = await readFile(result.markdownPath, "utf8");
     assert.match(markdown, /## AI Synthesis/);
     assert.match(markdown, /AI OK/);
-    assert.match(markdown, /provider: custom/);
+    assert.match(markdown, /> \[!success\] custom/);
+    assert.match(markdown, /status: "synthesized"/);
   } finally {
     globalThis.fetch = oldFetch;
   }

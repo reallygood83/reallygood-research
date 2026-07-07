@@ -705,17 +705,29 @@ function removeUndefined(value) {
 function renderMarkdown(request, providerResults, source, now, synthesis) {
   const lines = [
     "---",
-    `topic: ${yamlString(request.topic)}`,
+    `title: ${yamlString(request.topic)}`,
+    "aliases:",
+    `  - ${yamlString(request.topic)}`,
+    "tags:",
+    "  - research",
+    "  - reallygood-research",
+    `type: ${yamlString("research-note")}`,
+    `status: ${yamlString(researchStatus(synthesis))}`,
+    `created: ${yamlString(now.toISOString())}`,
     `agent: ${yamlString(request.agent)}`,
+    `research_mode: ${yamlString(describeResearchMode(providerResults, synthesis))}`,
+    `html_export: ${request.html}`,
     `mock: ${request.mock}`,
-    `createdAt: ${yamlString(now.toISOString())}`,
     "providers:",
-    ...providerResults.map((provider) => `  - provider: ${provider.name}`),
+    ...providerResults.map((provider) => `  - ${yamlString(provider.name)}`),
     "---",
     "",
     `# ${request.topic}`,
     "",
-    `Agent: ${request.agent}`,
+    "> [!summary] Research status",
+    `> Mode: ${describeResearchMode(providerResults, synthesis)}`,
+    `> Providers: ${providerResults.map((provider) => `${provider.name} (${provider.mode})`).join(", ") || "none"}`,
+    `> AI synthesis: ${synthesis?.content ? `completed by ${synthesis.provider}` : synthesis?.error ? `failed by ${synthesis.provider}` : "not used"}`,
     "",
   ];
 
@@ -724,18 +736,19 @@ function renderMarkdown(request, providerResults, source, now, synthesis) {
   }
 
   if (synthesis?.content) {
-    lines.push("## AI Synthesis", "", `provider: ${synthesis.provider}`, `command: ${synthesis.command}`, "", synthesis.content, "");
+    lines.push("## AI Synthesis", "", `> [!success] ${synthesis.provider}`, `> Command: \`${synthesis.command}\``, "", synthesis.content, "");
   } else if (synthesis?.error) {
-    lines.push("## AI Synthesis", "", `provider: ${synthesis.provider}`, `command: ${synthesis.command}`, `error: ${synthesis.error}`, "");
+    lines.push("## AI Synthesis", "", `> [!failure] ${synthesis.provider}`, `> Command: \`${synthesis.command}\``, `> Error: ${firstLine(synthesis.error)}`, "");
   }
 
   for (const provider of providerResults) {
     lines.push(
-      `## ${provider.name}`,
+      `## ${provider.name} Results`,
       "",
-      `provider: ${provider.name}`,
-      `mode: ${provider.mode}`,
-      `metadata: ${JSON.stringify(provider.metadata)}`,
+      `> [!info] Provider metadata`,
+      `> Mode: ${provider.mode}`,
+      `> Results: ${provider.metadata?.resultCount ?? provider.metadata?.sourcesFound ?? "n/a"}`,
+      `> Request: ${provider.metadata?.requestId || provider.metadata?.taskId || provider.metadata?.notebookId || "n/a"}`,
       "",
       provider.content,
       "",
@@ -743,6 +756,23 @@ function renderMarkdown(request, providerResults, source, now, synthesis) {
   }
 
   return `${lines.join("\n").trim()}\n`;
+}
+
+function researchStatus(synthesis) {
+  if (synthesis?.content) return "synthesized";
+  if (synthesis?.error) return "synthesis-failed";
+  return "collected";
+}
+
+function describeResearchMode(providerResults, synthesis) {
+  const providers = providerResults.map((provider) => provider.name);
+  if (providers.includes("notebooklm")) return "NotebookLM deep research";
+  if (providers.includes("tavily")) return synthesis?.content ? "Tavily search + AI synthesis" : "Tavily search";
+  return "research";
+}
+
+function firstLine(value) {
+  return String(value || "").split(/\r?\n/, 1)[0];
 }
 
 function renderHtml(request, markdown) {

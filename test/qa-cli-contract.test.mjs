@@ -63,8 +63,10 @@ test("C001 mock NotebookLM+Tavily run writes Markdown and HTML", async () => {
   assert.ok(htmlPath, `stdout did not include HTML path:\n${result.stdout}`);
   assert.equal(existsSync(markdownPath), true);
   assert.equal(existsSync(htmlPath), true);
-  assert.match(await readFile(markdownPath, "utf8"), /provider: notebooklm/i);
-  assert.match(await readFile(markdownPath, "utf8"), /provider: tavily/i);
+  const markdown = await readFile(markdownPath, "utf8");
+  assert.match(markdown, /providers:\n  - "notebooklm"\n  - "tavily"/i);
+  assert.match(markdown, /## notebooklm Results/i);
+  assert.match(markdown, /## tavily Results/i);
   assert.match(await readFile(htmlPath, "utf8"), /Agentic AI vertical market/);
 });
 
