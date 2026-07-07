@@ -44,6 +44,11 @@ test("Obsidian main.js is BRAT-standalone and registers a runnable research cons
   assert.match(source, /aiCommand/);
   assert.match(source, /Antigravity CLI/);
   assert.match(source, /AI_CLI_PROVIDERS/);
+  assert.match(source, /\$\{base\}\.cmd/);
+  assert.match(source, /agy\.cmd/);
+  assert.match(source, /antigravity\.cmd/);
+  assert.match(source, /AppData/);
+  assert.match(source, /delimiter/);
   assert.match(source, /\.nvm/);
   assert.match(source, /shellPath/);
   assert.match(source, /Tavily deep research/);

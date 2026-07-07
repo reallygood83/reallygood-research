@@ -351,24 +351,28 @@ test("built-in AI providers resolve local-bin CLI paths", async () => {
   try {
     const dir = await mkdtemp(join(tmpdir(), "drp-ai-path-"));
     const binDir = join(dir, "bin");
-    const fakeClaude = join(binDir, "claude");
     await import("node:fs/promises").then(({ mkdir }) => mkdir(binDir, { recursive: true }));
-    await writeFile(fakeClaude, "#!/bin/sh\ncat >/dev/null\nprintf 'LOCAL CLI OK'\n", "utf8");
-    await chmod(fakeClaude, 0o755);
+    for (const name of ["codex", "claude", "gemini", "grok", "agy"]) {
+      const fake = join(binDir, name);
+      await writeFile(fake, `#!/bin/sh\ncat >/dev/null\nprintf '${name.toUpperCase()} OK'\n`, "utf8");
+      await chmod(fake, 0o755);
+    }
     process.env.PATH = binDir;
 
-    const result = await runResearchPublish({
-      topic: "Local CLI path",
-      providers: "tavily",
-      vaultDir: join(dir, "vault"),
-      aiProvider: "claude",
-    });
+    for (const provider of ["codex", "claude", "gemini", "grok", "antigravity"]) {
+      const result = await runResearchPublish({
+        topic: `Local CLI path ${provider}`,
+        providers: "tavily",
+        vaultDir: join(dir, "vault"),
+        aiProvider: provider,
+      });
 
-    const markdown = await readFile(result.markdownPath, "utf8");
-    assert.match(markdown, /LOCAL CLI OK/);
-    assert.doesNotMatch(markdown, new RegExp(fakeClaude.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    const history = JSON.parse(await readFile(result.historyPath, "utf8"));
-    assert.match(history.synthesis.command, new RegExp(fakeClaude.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      const expectedName = provider === "antigravity" ? "AGY" : provider.toUpperCase();
+      const markdown = await readFile(result.markdownPath, "utf8");
+      assert.match(markdown, new RegExp(`${expectedName} OK`));
+      const history = JSON.parse(await readFile(result.historyPath, "utf8"));
+      assert.match(history.synthesis.command, new RegExp(join(binDir, provider === "antigravity" ? "agy" : provider).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    }
   } finally {
     process.env.PATH = oldPath;
     restore();

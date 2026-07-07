@@ -84,6 +84,8 @@ Supported built-in choices:
 
 Leave `AI provider` as `None` if no local AI CLI is installed or logged in.
 
+The plugin searches common macOS/Linux paths, NVM/Bun/Cargo user bins, and Windows CLI names such as `.exe`, `.cmd`, and `.ps1`. On Windows it also checks common npm/AppData install locations. For Antigravity, both `agy` and `antigravity` command names are supported.
+
 ## Local checkout example
 
 If you are developing against a local `notebooklm-cli` checkout, use commands like:

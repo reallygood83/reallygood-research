@@ -1,14 +1,14 @@
 import { chmod, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 
 const SUPPORTED_PROVIDERS = new Set(["notebooklm", "tavily"]);
 const AI_CLI_PROVIDERS = {
-  codex: { names: ["codex"], args: "exec -" },
-  claude: { names: ["claude"], args: "-p" },
-  gemini: { names: ["gemini"], args: "-p" },
-  grok: { names: ["grok"], args: '-p "$(cat)"' },
-  antigravity: { names: ["antigravity"], args: "-p" },
+  codex: { names: commandNames("codex"), args: "exec -" },
+  claude: { names: commandNames("claude"), args: "-p" },
+  gemini: { names: commandNames("gemini"), args: "-p" },
+  grok: { names: commandNames("grok"), args: process.platform === "win32" ? "-p" : '-p "$(cat)"' },
+  antigravity: { names: process.platform === "win32" ? ["agy.exe", "agy.cmd", "agy.ps1", "agy", "antigravity.exe", "antigravity.cmd", "antigravity.ps1", "antigravity"] : ["agy", "antigravity"], args: "-p" },
 };
 
 export const requestSchema = {
@@ -611,7 +611,7 @@ async function resolveAiCommand(provider, aiCommand) {
 
 async function findExecutable(names) {
   const commandNames = Array.isArray(names) ? names : [names];
-  const paths = (await mergePath(process.env.PATH)).split(":").filter(Boolean);
+  const paths = (await mergePath(process.env.PATH)).split(delimiter).filter(Boolean);
   for (const entry of paths) {
     for (const name of commandNames) {
       const candidate = join(entry, name);
@@ -629,9 +629,10 @@ function shellEnv() {
 }
 
 function mergePathSync(pathValue) {
-  const home = process.env.HOME || "";
+  const home = process.env.HOME || process.env.USERPROFILE || "";
   return uniquePathEntries([
-    ...String(pathValue || "").split(":"),
+    ...String(pathValue || "").split(delimiter),
+    ...commonCliPathEntries(home),
     "/opt/homebrew/bin",
     "/usr/local/bin",
     "/usr/bin",
@@ -642,14 +643,14 @@ function mergePathSync(pathValue) {
     join(home, ".npm-global", "bin"),
     join(home, ".bun", "bin"),
     join(home, ".cargo", "bin"),
-  ]).join(":");
+  ]).join(delimiter);
 }
 
 async function mergePath(pathValue) {
   return uniquePathEntries([
-    ...mergePathSync(pathValue).split(":"),
+    ...mergePathSync(pathValue).split(delimiter),
     ...(await listNodeVersionBins()),
-  ]).join(":");
+  ]).join(delimiter);
 }
 
 async function listNodeVersionBins() {
@@ -679,7 +680,27 @@ function shellPath() {
 }
 
 function quoteShell(value) {
+  if (process.platform === "win32") return `"${String(value).replaceAll('"', '\\"')}"`;
   return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
+function commandNames(base) {
+  return process.platform === "win32" ? [`${base}.exe`, `${base}.cmd`, `${base}.ps1`, base] : [base];
+}
+
+function commonCliPathEntries(home) {
+  if (process.platform !== "win32") return [];
+  const appData = process.env.APPDATA || join(home, "AppData", "Roaming");
+  const localAppData = process.env.LOCALAPPDATA || join(home, "AppData", "Local");
+  return [
+    join(appData, "npm"),
+    join(localAppData, "Programs", "Codex"),
+    join(localAppData, "Programs", "Claude"),
+    join(localAppData, "Programs", "Gemini"),
+    join(localAppData, "grok"),
+    join(localAppData, "agy", "bin"),
+    join(localAppData, "antigravity-cli"),
+  ];
 }
 
 function runAiCommand(command, prompt) {
