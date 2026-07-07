@@ -41,7 +41,11 @@ test("Obsidian main.js is BRAT-standalone and registers a runnable research cons
   assert.match(source, /AI provider/);
   assert.match(source, /aiCommand/);
   assert.match(source, /NotebookLM MCP command/);
+  assert.match(source, /NotebookLM login command/);
+  assert.match(source, /Login NotebookLM/);
+  assert.match(source, /runNotebookLmLogin/);
   assert.match(source, /notebooklmMcpCommand/);
+  assert.match(source, /notebooklmLoginCommand/);
   assert.doesNotMatch(source, /Odysseus/);
   assert.match(source, /createSection/);
   assert.match(source, /Copy command/);
@@ -136,7 +140,45 @@ test("Obsidian plugin migrates old demo defaults to real Tavily deep research", 
   assert.equal(plugin.settings.mock, false);
   assert.equal(plugin.settings.tavilyKeyless, true);
   assert.equal(plugin.settings.aiProvider, "none");
-  assert.equal(plugin.savedData.settingsVersion, 3);
+  assert.equal(plugin.savedData.settingsVersion, 4);
+});
+
+test("Obsidian plugin can run the configured NotebookLM login command", async () => {
+  const module = { exports: {} };
+  class Plugin {
+    async loadData() {
+      return {
+        notebooklmLoginCommand: `${process.execPath} -e "console.log('login ok')"`,
+        settingsVersion: 4,
+      };
+    }
+    async saveData(data) {
+      this.savedData = data;
+    }
+    addRibbonIcon() {}
+    addCommand() {}
+    addSettingTab() {}
+  }
+  class Modal {}
+  class PluginSettingTab {}
+  class Setting {}
+  const Notice = function Notice(message) {
+    return message;
+  };
+  const requireStub = (id) => {
+    if (id === "obsidian") return { Modal, Notice, Plugin, PluginSettingTab, Setting };
+    return require(id);
+  };
+  const source = await read("main.js");
+  Function("require", "module", "exports", source)(requireStub, module, module.exports);
+
+  const PluginClass = module.exports;
+  const plugin = new PluginClass();
+  plugin.app = { vault: { adapter: { getBasePath: () => "/tmp" } } };
+  plugin.manifest = { id: "reallygood-research", dir: ".obsidian/plugins/reallygood-research" };
+  await plugin.onload();
+
+  assert.match(await plugin.runNotebookLmLogin(), /login ok/);
 });
 
 test("agent skill templates call the shared CLI contract", async () => {

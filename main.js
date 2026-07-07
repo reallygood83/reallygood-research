@@ -7,7 +7,7 @@ const PROVIDER_OPTIONS = [
   ["notebooklm", "NotebookLM MCP"],
   ["tavily", "Tavily"],
 ];
-const SETTINGS_VERSION = 3;
+const SETTINGS_VERSION = 4;
 
 const DEFAULT_SETTINGS = {
   providers: "tavily",
@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   aiProvider: "none",
   aiCommand: "",
   notebooklmMcpCommand: "notebooklm-mcp",
+  notebooklmLoginCommand: "nlm login",
   notebooklmMode: "deep",
   notebooklmMaxWait: 900,
   settingsVersion: SETTINGS_VERSION,
@@ -103,6 +104,10 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
 
   async testTavilyApiKey(apiKey) {
     return testTavilyApiKey(apiKey);
+  }
+
+  async runNotebookLmLogin() {
+    return runShellCommand(this.settings.notebooklmLoginCommand || DEFAULT_SETTINGS.notebooklmLoginCommand, "", 300000);
   }
 
   buildCommandPreview(topic) {
@@ -250,6 +255,23 @@ class ResearchModal extends Modal {
           }),
       );
 
+    new Setting(notebookSection)
+      .setName("Login")
+      .setDesc("Runs the configured nlm login command from Obsidian.")
+      .addButton((button) =>
+        button.setButtonText("Login NotebookLM").onClick(async () => {
+          button.setDisabled(true);
+          try {
+            const output = await this.plugin.runNotebookLmLogin();
+            new Notice(output.trim() || "NotebookLM login finished.");
+          } catch (error) {
+            new Notice(error instanceof Error ? error.message : String(error));
+          } finally {
+            button.setDisabled(false);
+          }
+        }),
+      );
+
     const aiSection = createSection(contentEl, "AI synthesis");
     new Setting(aiSection)
       .setName("AI provider")
@@ -378,6 +400,32 @@ class ResearchSettingTab extends PluginSettingTab {
             this.plugin.settings.notebooklmMcpCommand = value.trim() || DEFAULT_SETTINGS.notebooklmMcpCommand;
             await this.plugin.saveSettings();
           }),
+      );
+
+    new Setting(containerEl)
+      .setName("NotebookLM login command")
+      .setDesc("Default: nlm login. If using the local checkout, use: cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run nlm login")
+      .addText((text) =>
+        text
+          .setPlaceholder("nlm login")
+          .setValue(this.plugin.settings.notebooklmLoginCommand || DEFAULT_SETTINGS.notebooklmLoginCommand)
+          .onChange(async (value) => {
+            this.plugin.settings.notebooklmLoginCommand = value.trim() || DEFAULT_SETTINGS.notebooklmLoginCommand;
+            await this.plugin.saveSettings();
+          }),
+      )
+      .addButton((button) =>
+        button.setButtonText("Run login").onClick(async () => {
+          button.setDisabled(true);
+          try {
+            const output = await this.plugin.runNotebookLmLogin();
+            new Notice(output.trim() || "NotebookLM login finished.");
+          } catch (error) {
+            new Notice(error instanceof Error ? error.message : String(error));
+          } finally {
+            button.setDisabled(false);
+          }
+        }),
       );
 
     new Setting(containerEl)
@@ -889,14 +937,18 @@ function resolveAiCommand(provider, aiCommand) {
 }
 
 function runAiCommand(command, prompt) {
+  return runShellCommand(command, prompt, 180000);
+}
+
+function runShellCommand(command, stdin = "", timeoutMs = 180000) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, { shell: true, stdio: ["pipe", "pipe", "pipe"], env: process.env });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
-      reject(new Error(`AI CLI timed out: ${command}`));
-    }, 180000);
+      reject(new Error(`Command timed out: ${command}`));
+    }, timeoutMs);
     child.stdout.on("data", (chunk) => {
       stdout += chunk;
     });
@@ -910,9 +962,9 @@ function runAiCommand(command, prompt) {
     child.on("close", (code) => {
       clearTimeout(timer);
       if (code === 0) resolve(stdout);
-      else reject(new Error(`AI CLI failed (${code}): ${stderr || stdout || command}`));
+      else reject(new Error(`Command failed (${code}): ${stderr || stdout || command}`));
     });
-    child.stdin.end(prompt);
+    child.stdin.end(stdin);
   });
 }
 

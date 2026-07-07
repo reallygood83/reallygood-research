@@ -28,6 +28,8 @@ If `notebooklm-mcp` is not on your PATH, set `NotebookLM MCP command` in plugin 
 cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run notebooklm-mcp
 ```
 
+The Obsidian settings tab also has a `Run login` button. Set `NotebookLM login command` to `cd /Users/moon/Documents/NoteBookLM/notebooklm-cli && uv run nlm login` if you use the local checkout, then click the button instead of opening Terminal yourself.
+
 ## CLI
 
 ```sh
