@@ -209,8 +209,46 @@ test("tavily provider uses Research API when an API key is configured", async ()
     assert.match(markdown, /research_mode: "Tavily deep research"/);
     assert.match(markdown, /### Tavily Research Report/);
     assert.match(markdown, /Deeper cited synthesis/);
+    const history = JSON.parse(await readFile(result.historyPath, "utf8"));
+    assert.ok(history.providers[0].metadata.reportChars > 0);
+    assert.equal(history.providers[0].metadata.sourceCount, 1);
     assert.equal(calls[0].url, "https://api.tavily.com/research");
     assert.match(calls[1].url, /\/research\/research-1$/);
+  } finally {
+    globalThis.fetch = oldFetch;
+    if (oldKey === undefined) delete process.env.TAVILY_API_KEY;
+    else process.env.TAVILY_API_KEY = oldKey;
+  }
+});
+
+test("tavily research waits for completed responses to include report content", async () => {
+  const oldFetch = globalThis.fetch;
+  const oldKey = process.env.TAVILY_API_KEY;
+  let polls = 0;
+  process.env.TAVILY_API_KEY = "tvly-test-key";
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/research")) {
+      const body = JSON.parse(String(options.body || "{}"));
+      assert.equal(body.model, "mini");
+      assert.equal(body.output_length, "long");
+      return { ok: true, json: async () => ({ request_id: "delayed-report", status: "pending" }) };
+    }
+    if (String(url).endsWith("/research/delayed-report")) {
+      polls += 1;
+      return {
+        ok: true,
+        json: async () => polls === 1
+          ? { request_id: "delayed-report", status: "completed", sources: [{ title: "Early source", url: "https://example.com" }] }
+          : { request_id: "delayed-report", status: "completed", content: "Delayed Tavily report body.", sources: [] },
+      };
+    }
+    throw new Error(`unexpected url ${url}`);
+  };
+
+  try {
+    const result = await tavilyResearch({ input: "Delayed report", maxWaitSeconds: 10, pollIntervalMs: 1 });
+    assert.equal(polls, 2);
+    assert.equal(result.content, "Delayed Tavily report body.");
   } finally {
     globalThis.fetch = oldFetch;
     if (oldKey === undefined) delete process.env.TAVILY_API_KEY;

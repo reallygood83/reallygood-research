@@ -78,7 +78,7 @@ async function handleJsonRpc(line) {
       send(message.id, {
         protocolVersion: message.params?.protocolVersion || "2025-06-18",
         capabilities: { tools: {} },
-        serverInfo: { name: "reallygood-research", version: "0.1.23" },
+        serverInfo: { name: "reallygood-research", version: "0.1.24" },
       });
     } else if (message.method === "tools/list") {
       send(message.id, { tools: tools() });

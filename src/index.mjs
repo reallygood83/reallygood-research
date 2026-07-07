@@ -431,6 +431,7 @@ async function runTavilyProvider(request) {
     model: "mini",
     outputLength: "long",
   });
+  const content = renderTavilyResearchContent(research);
   return {
     name: "tavily",
     mode: "research",
@@ -440,8 +441,10 @@ async function runTavilyProvider(request) {
       status: research.status || null,
       credits: research.usage?.credits ?? null,
       model: research.model || "mini",
+      reportChars: content.length,
+      sourceCount: tavilySourceCount(research),
     },
-    content: renderTavilyResearchContent(research),
+    content,
   };
 }
 
@@ -468,10 +471,10 @@ export async function tavilyResearch(input) {
 
   const requestId = created.request_id || created.id;
   if (!requestId) return created;
-  return pollTavilyResearch(requestId, headers, numberValue(input.maxWaitSeconds, 900));
+  return pollTavilyResearch(requestId, headers, numberValue(input.maxWaitSeconds, 900), numberValue(input.pollIntervalMs, 5000));
 }
 
-async function pollTavilyResearch(requestId, headers, maxWaitSeconds) {
+async function pollTavilyResearch(requestId, headers, maxWaitSeconds, pollIntervalMs = 5000) {
   const deadline = Date.now() + maxWaitSeconds * 1000;
   let last = null;
   while (Date.now() < deadline) {
@@ -481,13 +484,26 @@ async function pollTavilyResearch(requestId, headers, maxWaitSeconds) {
       throw new Error(`Tavily research status failed (${response.status}): ${last.error || last.message || response.statusText}`);
     }
     const status = String(last.status || "").toLowerCase();
-    if (["completed", "complete", "succeeded", "success"].includes(status)) return last;
+    if (["completed", "complete", "succeeded", "success"].includes(status) && hasTavilyResearchReport(last)) return last;
     if (["failed", "error", "cancelled", "canceled"].includes(status)) {
       throw new Error(`Tavily research failed: ${last.error || last.message || status}`);
     }
-    await delay(5000);
+    await delay(pollIntervalMs);
+  }
+  if (last && ["completed", "complete", "succeeded", "success"].includes(String(last.status || "").toLowerCase())) {
+    throw new Error(`Tavily research completed without a report body yet: ${requestId}`);
   }
   throw new Error(`Tavily research timed out: ${requestId}`);
+}
+
+function hasTavilyResearchReport(payload) {
+  return Boolean(stringValue(payload?.report || payload?.content || payload?.answer || payload?.output || payload?.result));
+}
+
+function tavilySourceCount(payload) {
+  if (Array.isArray(payload?.sources)) return payload.sources.length;
+  if (Array.isArray(payload?.results)) return payload.results.length;
+  return 0;
 }
 
 export async function tavilySearch(input) {
@@ -753,7 +769,8 @@ function renderTavilyContent(payload, results) {
 
 function renderTavilyResearchContent(payload) {
   const report = payload.report || payload.content || payload.answer || payload.output || payload.result || "";
-  const lines = ["### Tavily Research Report", "", String(report || "Tavily research completed without a report payload.").trim(), ""];
+  if (!stringValue(report)) throw new Error("Tavily research completed without a report payload.");
+  const lines = ["### Tavily Research Report", "", String(report).trim(), ""];
   const sources = Array.isArray(payload.sources) ? payload.sources : Array.isArray(payload.results) ? payload.results : [];
   if (sources.length) {
     lines.push("### Tavily Research Sources", "");
