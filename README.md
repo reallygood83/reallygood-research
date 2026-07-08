@@ -59,13 +59,22 @@ The key can be saved from the research console or from plugin settings. It is wr
 
 ### NotebookLM
 
-NotebookLM requires the local `notebooklm-mcp-cli` tools. The plugin shows this same command in the console and settings as `Copy install`.
+NotebookLM uses `uvx` by default, so users do not need to install `nlm` before clicking `Login NotebookLM`.
+
+Default commands:
+
+```text
+NotebookLM login command: uvx --from notebooklm-mcp-cli nlm login
+NotebookLM MCP command: uvx --from notebooklm-mcp-cli notebooklm-mcp
+```
+
+For faster repeat use, the plugin also shows this optional install command in the console and settings as `Copy install`.
 
 ```sh
 uv tool install notebooklm-mcp-cli
 ```
 
-Then in Obsidian settings:
+After installing permanently, advanced users may change the settings to:
 
 ```text
 NotebookLM login command: nlm login
@@ -84,7 +93,7 @@ or:
 notebooklm,tavily
 ```
 
-If `uv`, `nlm`, or `notebooklm-mcp` is not on the Obsidian shell path, use absolute paths in those two command fields.
+If `uv` is not on the Obsidian shell path, use the full path to `uvx` in those two command fields.
 
 ### AI synthesis
 
@@ -133,7 +142,7 @@ Outputs:
 - optional HTML report
 - JSON history under `.deep-research-publisher/`
 
-Use `--mock` only for local test output. Tavily mode always uses the Tavily Research API and requires `TAVILY_API_KEY`. NotebookLM mode uses the `notebooklm-mcp` stdio server from `notebooklm-cli`.
+Use `--mock` only for local test output. Tavily mode always uses the Tavily Research API and requires `TAVILY_API_KEY`. NotebookLM mode uses the `notebooklm-mcp` stdio server from `notebooklm-mcp-cli`.
 
 NotebookLM example with a custom MCP command:
 
@@ -143,7 +152,7 @@ node bin/deep-research.mjs run \
   --providers notebooklm \
   --vault-dir "/path/to/Obsidian/Vault/Research" \
   --html \
-  --notebooklm-mcp-command "notebooklm-mcp"
+  --notebooklm-mcp-command "uvx --from notebooklm-mcp-cli notebooklm-mcp"
 ```
 
 To save a Tavily API key locally:

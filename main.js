@@ -8,8 +8,10 @@ const PROVIDER_OPTIONS = [
   ["notebooklm", "NotebookLM MCP"],
   ["tavily", "Tavily"],
 ];
-const SETTINGS_VERSION = 9;
+const SETTINGS_VERSION = 10;
 const NOTEBOOKLM_INSTALL_COMMAND = "uv tool install notebooklm-mcp-cli";
+const NOTEBOOKLM_MCP_COMMAND = "uvx --from notebooklm-mcp-cli notebooklm-mcp";
+const NOTEBOOKLM_LOGIN_COMMAND = "uvx --from notebooklm-mcp-cli nlm login";
 const AI_CLI_PROVIDERS = {
   codex: { label: "Codex CLI", names: commandNames("codex"), args: "exec -" },
   claude: { label: "Claude Code CLI", names: commandNames("claude"), args: "-p" },
@@ -26,8 +28,8 @@ const DEFAULT_SETTINGS = {
   tavilyKeyless: false,
   aiProvider: "none",
   aiCommand: "",
-  notebooklmMcpCommand: "notebooklm-mcp",
-  notebooklmLoginCommand: "nlm login",
+  notebooklmMcpCommand: NOTEBOOKLM_MCP_COMMAND,
+  notebooklmLoginCommand: NOTEBOOKLM_LOGIN_COMMAND,
   notebooklmMode: "deep",
   notebooklmMaxWait: 900,
   settingsVersion: SETTINGS_VERSION,
@@ -381,7 +383,7 @@ class ResearchModal extends Modal {
     const notebookSection = createSection(contentEl, "NotebookLM MCP");
     new Setting(notebookSection)
       .setName("Install command")
-      .setDesc("Run once if nlm or notebooklm-mcp is not installed.")
+      .setDesc("Optional. Default commands use uvx, so permanent install is only for faster repeat use.")
       .addText((text) => {
         text.setValue(NOTEBOOKLM_INSTALL_COMMAND);
         text.inputEl.disabled = true;
@@ -395,10 +397,10 @@ class ResearchModal extends Modal {
 
     new Setting(notebookSection)
       .setName("MCP command")
-      .setDesc("Default: notebooklm-mcp. Run nlm login before using NotebookLM.")
+      .setDesc("Default uses uvx, so NotebookLM can run before a permanent install.")
       .addText((text) =>
         text
-          .setPlaceholder("notebooklm-mcp")
+          .setPlaceholder(NOTEBOOKLM_MCP_COMMAND)
           .setValue(this.plugin.settings.notebooklmMcpCommand || DEFAULT_SETTINGS.notebooklmMcpCommand)
           .onChange(async (value) => {
             this.plugin.settings.notebooklmMcpCommand = value.trim() || DEFAULT_SETTINGS.notebooklmMcpCommand;
@@ -549,10 +551,10 @@ class ResearchSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("NotebookLM MCP command")
-      .setDesc("Default: notebooklm-mcp. If using a source checkout, use: cd /path/to/notebooklm-cli && uv run notebooklm-mcp")
+      .setDesc("Default uses uvx. If using a source checkout, use: cd /path/to/notebooklm-cli && uv run notebooklm-mcp")
       .addText((text) =>
         text
-          .setPlaceholder("notebooklm-mcp")
+          .setPlaceholder(NOTEBOOKLM_MCP_COMMAND)
           .setValue(this.plugin.settings.notebooklmMcpCommand || DEFAULT_SETTINGS.notebooklmMcpCommand)
           .onChange(async (value) => {
             this.plugin.settings.notebooklmMcpCommand = value.trim() || DEFAULT_SETTINGS.notebooklmMcpCommand;
@@ -562,7 +564,7 @@ class ResearchSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("NotebookLM install command")
-      .setDesc("Copy this and run it once in Terminal if nlm or notebooklm-mcp is missing.")
+      .setDesc("Optional. Copy this if you want permanent nlm and notebooklm-mcp commands.")
       .addText((text) => {
         text.setValue(NOTEBOOKLM_INSTALL_COMMAND);
         text.inputEl.disabled = true;
@@ -576,10 +578,10 @@ class ResearchSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("NotebookLM login command")
-      .setDesc("Default: nlm login. If using a source checkout, use: cd /path/to/notebooklm-cli && uv run nlm login")
+      .setDesc("Default uses uvx. If using a source checkout, use: cd /path/to/notebooklm-cli && uv run nlm login")
       .addText((text) =>
         text
-          .setPlaceholder("nlm login")
+          .setPlaceholder(NOTEBOOKLM_LOGIN_COMMAND)
           .setValue(this.plugin.settings.notebooklmLoginCommand || DEFAULT_SETTINGS.notebooklmLoginCommand)
           .onChange(async (value) => {
             this.plugin.settings.notebooklmLoginCommand = value.trim() || DEFAULT_SETTINGS.notebooklmLoginCommand;
@@ -709,7 +711,7 @@ class NotebookLmLoginModal extends Modal {
 
     new Setting(contentEl)
       .setName("1. Install command")
-      .setDesc("Copy and run in Terminal if nlm is not installed.")
+      .setDesc("Optional. The default login uses uvx, so this is only needed if you want permanent nlm/notebooklm-mcp commands.")
       .addText((text) => {
         text.setValue(NOTEBOOKLM_INSTALL_COMMAND);
         text.inputEl.disabled = true;
@@ -791,8 +793,12 @@ function migrateSettings(settings, savedSettings) {
     settings.notebooklmLoginCommand = normalizeLocalNotebookLmCommand(settings.notebooklmLoginCommand, "nlm login");
   }
   if ((savedSettings.settingsVersion || 0) < 9) {
-    settings.notebooklmMcpCommand = resetOldLocalNotebookLmCommand(settings.notebooklmMcpCommand, "notebooklm-mcp");
-    settings.notebooklmLoginCommand = resetOldLocalNotebookLmCommand(settings.notebooklmLoginCommand, "nlm login");
+    settings.notebooklmMcpCommand = resetOldLocalNotebookLmCommand(settings.notebooklmMcpCommand, NOTEBOOKLM_MCP_COMMAND);
+    settings.notebooklmLoginCommand = resetOldLocalNotebookLmCommand(settings.notebooklmLoginCommand, NOTEBOOKLM_LOGIN_COMMAND);
+  }
+  if ((savedSettings.settingsVersion || 0) < 10) {
+    settings.notebooklmMcpCommand = migrateBareNotebookLmCommand(settings.notebooklmMcpCommand, "notebooklm-mcp", NOTEBOOKLM_MCP_COMMAND);
+    settings.notebooklmLoginCommand = migrateBareNotebookLmCommand(settings.notebooklmLoginCommand, "nlm login", NOTEBOOKLM_LOGIN_COMMAND);
   }
   if ((savedSettings.settingsVersion || 0) < 8 && settings.aiProvider === "codex" && !settings.aiCommand) {
     settings.aiProvider = "none";
@@ -820,6 +826,11 @@ function resetOldLocalNotebookLmCommand(command, tool) {
   const value = stringValue(command);
   if (/\/NoteBookLM\/notebooklm-cli\b/.test(value) && /\buv run\b/.test(value)) return tool;
   return value || tool;
+}
+
+function migrateBareNotebookLmCommand(command, oldDefault, newDefault) {
+  const value = stringValue(command);
+  return !value || value === oldDefault ? newDefault : value;
 }
 
 async function openPathInBrowser(filePath) {
@@ -911,7 +922,7 @@ function validateResearchRequest(input) {
     includeAnswer: input.includeAnswer === undefined ? true : Boolean(input.includeAnswer),
     aiProvider: stringValue(input.aiProvider) || "none",
     aiCommand: stringValue(input.aiCommand),
-    notebooklmMcpCommand: stringValue(input.notebooklmMcpCommand) || "notebooklm-mcp",
+    notebooklmMcpCommand: stringValue(input.notebooklmMcpCommand) || NOTEBOOKLM_MCP_COMMAND,
     notebooklmMode: stringValue(input.notebooklmMode) || "deep",
     notebooklmMaxWait: numberValue(input.notebooklmMaxWait, 900),
   };

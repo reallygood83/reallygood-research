@@ -58,6 +58,8 @@ test("Obsidian main.js is BRAT-standalone and registers a runnable research cons
   assert.match(source, /NotebookLM login command/);
   assert.match(source, /NotebookLM install command/);
   assert.match(source, /NOTEBOOKLM_INSTALL_COMMAND/);
+  assert.match(source, /uvx --from notebooklm-mcp-cli nlm login/);
+  assert.match(source, /uvx --from notebooklm-mcp-cli notebooklm-mcp/);
   assert.match(source, /uv tool install notebooklm-mcp-cli/);
   assert.match(source, /Login NotebookLM/);
   assert.match(source, /Open login popup/);
@@ -471,9 +473,9 @@ test("Obsidian plugin migrates old demo defaults to real Tavily deep research", 
   assert.equal(plugin.settings.mock, false);
   assert.equal(plugin.settings.tavilyKeyless, false);
   assert.equal(plugin.settings.aiProvider, "none");
-  assert.equal(plugin.settings.notebooklmMcpCommand, "notebooklm-mcp");
-  assert.equal(plugin.settings.notebooklmLoginCommand, "nlm login");
-  assert.equal(plugin.savedData.settingsVersion, 9);
+  assert.equal(plugin.settings.notebooklmMcpCommand, "uvx --from notebooklm-mcp-cli notebooklm-mcp");
+  assert.equal(plugin.settings.notebooklmLoginCommand, "uvx --from notebooklm-mcp-cli nlm login");
+  assert.equal(plugin.savedData.settingsVersion, 10);
 });
 
 test("Obsidian plugin migrates saved Codex synthesis back to none", async () => {
@@ -514,7 +516,48 @@ test("Obsidian plugin migrates saved Codex synthesis back to none", async () => 
   await plugin.onload();
 
   assert.equal(plugin.settings.aiProvider, "none");
-  assert.equal(plugin.savedData.settingsVersion, 9);
+  assert.equal(plugin.savedData.settingsVersion, 10);
+});
+
+test("Obsidian plugin migrates bare NotebookLM commands to uvx defaults", async () => {
+  const module = { exports: {} };
+  class Plugin {
+    async loadData() {
+      return {
+        notebooklmMcpCommand: "notebooklm-mcp",
+        notebooklmLoginCommand: "nlm login",
+        settingsVersion: 9,
+      };
+    }
+    async saveData(data) {
+      this.savedData = data;
+    }
+    addRibbonIcon() {}
+    addCommand() {}
+    addSettingTab() {}
+  }
+  class Modal {}
+  class PluginSettingTab {}
+  class Setting {}
+  const Notice = function Notice(message) {
+    return message;
+  };
+  const requireStub = (id) => {
+    if (id === "obsidian") return { Modal, Notice, Plugin, PluginSettingTab, Setting };
+    return require(id);
+  };
+  const source = await read("main.js");
+  Function("require", "module", "exports", source)(requireStub, module, module.exports);
+
+  const PluginClass = module.exports;
+  const plugin = new PluginClass();
+  plugin.app = { vault: { adapter: { getBasePath: () => "/tmp" } } };
+  plugin.manifest = { id: "reallygood-research", dir: ".obsidian/plugins/reallygood-research" };
+  await plugin.onload();
+
+  assert.equal(plugin.settings.notebooklmMcpCommand, "uvx --from notebooklm-mcp-cli notebooklm-mcp");
+  assert.equal(plugin.settings.notebooklmLoginCommand, "uvx --from notebooklm-mcp-cli nlm login");
+  assert.equal(plugin.savedData.settingsVersion, 10);
 });
 
 test("Obsidian plugin can run the configured NotebookLM login command", async () => {
