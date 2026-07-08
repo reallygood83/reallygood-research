@@ -9,6 +9,7 @@ const PROVIDER_OPTIONS = [
   ["tavily", "Tavily"],
 ];
 const SETTINGS_VERSION = 9;
+const NOTEBOOKLM_INSTALL_COMMAND = "uv tool install notebooklm-mcp-cli";
 const AI_CLI_PROVIDERS = {
   codex: { label: "Codex CLI", names: commandNames("codex"), args: "exec -" },
   claude: { label: "Claude Code CLI", names: commandNames("claude"), args: "-p" },
@@ -156,6 +157,10 @@ module.exports = class ReallyGoodResearchPlugin extends Plugin {
       /Successfully authenticated|Authentication valid|Notebooks found/,
       300000,
     );
+  }
+
+  openNotebookLmLoginModal() {
+    new NotebookLmLoginModal(this.app, this).open();
   }
 
   buildCommandPreview(topic) {
@@ -375,6 +380,20 @@ class ResearchModal extends Modal {
 
     const notebookSection = createSection(contentEl, "NotebookLM MCP");
     new Setting(notebookSection)
+      .setName("Install command")
+      .setDesc("Run once if nlm or notebooklm-mcp is not installed.")
+      .addText((text) => {
+        text.setValue(NOTEBOOKLM_INSTALL_COMMAND);
+        text.inputEl.disabled = true;
+      })
+      .addButton((button) =>
+        button.setButtonText("Copy install").onClick(async () => {
+          await copyText(NOTEBOOKLM_INSTALL_COMMAND);
+          new Notice("NotebookLM install command copied.");
+        }),
+      );
+
+    new Setting(notebookSection)
       .setName("MCP command")
       .setDesc("Default: notebooklm-mcp. Run nlm login before using NotebookLM.")
       .addText((text) =>
@@ -390,19 +409,9 @@ class ResearchModal extends Modal {
 
     new Setting(notebookSection)
       .setName("Login")
-      .setDesc("Runs the configured nlm login command from Obsidian.")
+      .setDesc("Opens a login popup with command output.")
       .addButton((button) =>
-        button.setButtonText("Login NotebookLM").onClick(async () => {
-          button.setDisabled(true);
-          try {
-            const output = await this.plugin.runNotebookLmLogin();
-            new Notice(output.trim() || "NotebookLM login finished.");
-          } catch (error) {
-            new Notice(error instanceof Error ? error.message : String(error));
-          } finally {
-            button.setDisabled(false);
-          }
-        }),
+        button.setButtonText("Login NotebookLM").onClick(() => this.plugin.openNotebookLmLoginModal()),
       );
 
     const aiSection = createSection(contentEl, "AI synthesis");
@@ -552,6 +561,20 @@ class ResearchSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("NotebookLM install command")
+      .setDesc("Copy this and run it once in Terminal if nlm or notebooklm-mcp is missing.")
+      .addText((text) => {
+        text.setValue(NOTEBOOKLM_INSTALL_COMMAND);
+        text.inputEl.disabled = true;
+      })
+      .addButton((button) =>
+        button.setButtonText("Copy install").onClick(async () => {
+          await copyText(NOTEBOOKLM_INSTALL_COMMAND);
+          new Notice("NotebookLM install command copied.");
+        }),
+      );
+
+    new Setting(containerEl)
       .setName("NotebookLM login command")
       .setDesc("Default: nlm login. If using a source checkout, use: cd /path/to/notebooklm-cli && uv run nlm login")
       .addText((text) =>
@@ -564,17 +587,7 @@ class ResearchSettingTab extends PluginSettingTab {
           }),
       )
       .addButton((button) =>
-        button.setButtonText("Run login").onClick(async () => {
-          button.setDisabled(true);
-          try {
-            const output = await this.plugin.runNotebookLmLogin();
-            new Notice(output.trim() || "NotebookLM login finished.");
-          } catch (error) {
-            new Notice(error instanceof Error ? error.message : String(error));
-          } finally {
-            button.setDisabled(false);
-          }
-        }),
+        button.setButtonText("Open login popup").onClick(() => this.plugin.openNotebookLmLoginModal()),
       );
 
     new Setting(containerEl)
@@ -678,6 +691,84 @@ function createSection(parent, heading) {
   const section = parent.createDiv({ cls: "reallygood-research-section" });
   section.createEl("h3", { text: heading });
   return section;
+}
+
+class NotebookLmLoginModal extends Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("reallygood-research-modal");
+    const header = contentEl.createDiv({ cls: "reallygood-research-header" });
+    header.createEl("h2", { text: "NotebookLM setup" });
+    header.createEl("p", { text: "Install the local CLI once, then log in with your Google/NotebookLM account." });
+
+    new Setting(contentEl)
+      .setName("1. Install command")
+      .setDesc("Copy and run in Terminal if nlm is not installed.")
+      .addText((text) => {
+        text.setValue(NOTEBOOKLM_INSTALL_COMMAND);
+        text.inputEl.disabled = true;
+      })
+      .addButton((button) =>
+        button.setButtonText("Copy install").onClick(async () => {
+          await copyText(NOTEBOOKLM_INSTALL_COMMAND);
+          new Notice("NotebookLM install command copied.");
+        }),
+      );
+
+    new Setting(contentEl)
+      .setName("2. Login command")
+      .setDesc("This opens the configured login flow from Obsidian.")
+      .addText((text) => {
+        text.setValue(this.plugin.settings.notebooklmLoginCommand || DEFAULT_SETTINGS.notebooklmLoginCommand);
+        text.inputEl.disabled = true;
+      })
+      .addButton((button) =>
+        button.setButtonText("Copy login").onClick(async () => {
+          await copyText(this.plugin.settings.notebooklmLoginCommand || DEFAULT_SETTINGS.notebooklmLoginCommand);
+          new Notice("NotebookLM login command copied.");
+        }),
+      );
+
+    const logEl = contentEl.createEl("pre", { cls: "reallygood-research-log" });
+    logEl.setText("Ready. Click Run login, approve the browser login, then return to Obsidian.");
+    let log = "";
+
+    new Setting(contentEl)
+      .addButton((button) =>
+        button.setButtonText("Run login").setCta().onClick(async () => {
+          button.setDisabled(true);
+          log = `Running:\n${this.plugin.settings.notebooklmLoginCommand || DEFAULT_SETTINGS.notebooklmLoginCommand}\n\n`;
+          logEl.setText(log);
+          try {
+            const output = await this.plugin.runNotebookLmLogin();
+            log += output.trim() || "NotebookLM login finished.";
+            logEl.setText(log);
+            new Notice("NotebookLM login finished.");
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            log += message;
+            logEl.setText(log);
+            new Notice(message);
+          } finally {
+            button.setDisabled(false);
+          }
+        }),
+      );
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
+async function copyText(value) {
+  await navigator.clipboard.writeText(value);
 }
 
 function migrateSettings(settings, savedSettings) {

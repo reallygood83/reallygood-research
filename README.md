@@ -59,7 +59,7 @@ The key can be saved from the research console or from plugin settings. It is wr
 
 ### NotebookLM
 
-NotebookLM requires the local `notebooklm-cli` tools.
+NotebookLM requires the local `notebooklm-mcp-cli` tools. The plugin shows this same command in the console and settings as `Copy install`.
 
 ```sh
 uv tool install notebooklm-mcp-cli
@@ -72,7 +72,7 @@ NotebookLM login command: nlm login
 NotebookLM MCP command: notebooklm-mcp
 ```
 
-Click `Run login`, approve the browser login, then set `Providers` to either:
+Click `Login NotebookLM` in the console or `Open login popup` in settings, approve the browser login, then set `Providers` to either:
 
 ```text
 notebooklm
